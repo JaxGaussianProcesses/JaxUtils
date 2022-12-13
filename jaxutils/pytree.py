@@ -19,7 +19,7 @@ import jax
 from typing import Any
 
 
-class Pytree(metaclass=abc.ABCMeta):
+class PyTree(metaclass=abc.ABCMeta):
     """An abstract base class for a JAX compatible pytree. Adapted from `distrax._src.utils.jittable.Jittable`."""
 
     def __new__(cls, *args, **kwargs):
@@ -71,6 +71,6 @@ def is_jax_type(x: Any) -> bool:
 
 
 __all__ = [
-    "Pytree",
+    "PyTree",
     "is_jax_type",
 ]
