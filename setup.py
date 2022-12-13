@@ -24,7 +24,7 @@ def find_version(*file_paths):
     raise RuntimeError("Unable to find version string.")
 
 
-version = find_version("gpjax", "__init__.py")
+version = find_version("jaxutils", "__init__.py")
 readme = open("README.md").read()
 
 
