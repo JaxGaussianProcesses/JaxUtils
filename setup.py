@@ -31,7 +31,6 @@ readme = open("README.md").read()
 REQUIRES = [
     "jax>=0.1.67",
     "jaxlib>=0.1.47",
-    "optax",
 ]
 
 EXTRAS = {
@@ -48,7 +47,7 @@ EXTRAS = {
 
 
 setup(
-    name="JaxUitls",
+    name="JaxUtils",
     version=version,
     author="Daniel Dodd and Thomas Pinder",
     author_email="tompinder@live.co.uk",

@@ -6,7 +6,7 @@ __url__ = "https://github.com/JaxGaussianProcesses/JaxUtils"
 __contributors__ = (
     "https://github.com//JaxGaussianProcesses/JaxUtils/graphs/contributors"
 )
-__version__ = "0.5.3"
+__version__ = "0.0.2"
 
 
 __all__ = ["PyTree"]
