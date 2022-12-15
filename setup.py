@@ -46,6 +46,7 @@ readme = open("README.md").read()
 REQUIRES = [
     "jax>=0.1.67",
     "jaxlib>=0.1.47",
+    "jaxtyping"
 ]
 
 EXTRAS = {
