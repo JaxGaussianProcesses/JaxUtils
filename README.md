@@ -56,8 +56,8 @@ print(f'The input dimension is {D.in_dim}')
 print(f'The output dimension is {D.out_dim}')
 print(f'The input data is {D.X}')
 print(f'The output data is {D.y}')
-print(f'The input data is supervised {D.is_supervised()}')
-print(f'The input data is unsupervised {D.is_unsupervised()}')
+print(f'The data is supervised {D.is_supervised()}')
+print(f'The data is unsupervised {D.is_unsupervised()}')
 ```
 ```
 The number of datapoints is 3
@@ -69,8 +69,8 @@ The input data is [[1. 2.]
 The output data is [[7.]
  [8.]
  [9.]]
-The input data is supervised True
-The input data is unsupervised False
+The data is supervised True
+The data is unsupervised False
 ```
 
 You can also add dataset together to concatenate them.
@@ -93,8 +93,8 @@ print(f'The input dimension is {D.in_dim}')
 print(f'The output dimension is {D.out_dim}')
 print(f'The input data is {D.X}')
 print(f'The output data is {D.y}')
-print(f'The input data is supervised {D.is_supervised()}')
-print(f'The input data is unsupervised {D.is_unsupervised()}')
+print(f'The data is supervised {D.is_supervised()}')
+print(f'The data is unsupervised {D.is_unsupervised()}')
 ```
 
 ```
@@ -113,6 +113,6 @@ The output data is [[7.]
  [7.]
  [8.]
  [9.]]
-The input data is supervised True
-The input data is unsupervised False
+The data is supervised True
+The data is unsupervised False
 ```
