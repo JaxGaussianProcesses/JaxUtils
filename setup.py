@@ -22,9 +22,9 @@ NAME = "jaxutils"
 
 
 # Handle builds of nightly release - adapted from BlackJax.
-if "BUILD_JAXUTILS_NIGHTLY" in os.environ:
-    if os.environ["BUILD_JAXUTILS_NIGHTLY"] == "nightly":
-        NAME += "-nightly"
+# if "BUILD_JAXUTILS_NIGHTLY" in os.environ:
+#     if os.environ["BUILD_JAXUTILS_NIGHTLY"] == "nightly":
+#         NAME += "-nightly"
 
 REQUIRES = ["jax>=0.4.0", "jaxlib>=0.4.0", "jaxtyping"]
 
@@ -42,7 +42,7 @@ EXTRAS = {
 
 
 setup(
-    name="JaxUtils",
+    name=NAME,
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
     author="Daniel Dodd and Thomas Pinder",
