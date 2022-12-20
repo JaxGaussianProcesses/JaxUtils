@@ -1,13 +1,18 @@
 # [JaxUtils](https://github.com/JaxGaussianProcesses/JaxUtils)
 
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/JaxGaussianProcesses/JaxUtils/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/JaxGaussianProcesses/JaxUtils/tree/master)
+
 `JaxUtils` provides utility functions for the [`JaxGaussianProcesses`]() ecosystem.</h2>
 
 # Contents
-* [PyTree](#pytree)
-* [Dataset](#dataset)
-    
+
+- [PyTree](#pytree)
+- [Dataset](#dataset)
+
 # PyTree
+
 ## Overview
+
 `jaxutils.PyTree` is a mixin class for [registering a python class as a JAX PyTree](https://jax.readthedocs.io/en/latest/pytrees.html#extending-pytrees). You would define your Python class as follows.
 
 ```python
@@ -27,13 +32,15 @@ class Line(jaxutils.PyTree):
     def __init__(self, gradient: Float[Array, "1"], intercept: Float[Array, "1"]) -> None
         self.gradient = gradient
         self.intercept = intercept
-        
+
     def y(self, x: Float[Array, "N"]) -> Float[Array, "N"]
         return x * self.gradient + self.intercept
 ```
 
 # Dataset
+
 ## Overview
+
 `jaxutils.Dataset` is a datset abstraction. In future, we wish to extend this to a heterotopic and isotopic data abstraction.
 
 ## Example
@@ -43,7 +50,7 @@ import jaxutils
 import jax.numpy as jnp
 
 # Inputs
-X = jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]) 
+X = jnp.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
 
 # Outputs
 y = jnp.array([[7.0], [8.0], [9.0]])
@@ -59,6 +66,7 @@ print(f'The output data is {D.y}')
 print(f'The data is supervised {D.is_supervised()}')
 print(f'The data is unsupervised {D.is_unsupervised()}')
 ```
+
 ```
 The number of datapoints is 3
 The input dimension is 2
