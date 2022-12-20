@@ -22,9 +22,17 @@ NAME = "jaxutils"
 
 
 # Handle builds of nightly release - adapted from BlackJax.
-# if "BUILD_JAXUTILS_NIGHTLY" in os.environ:
-#     if os.environ["BUILD_JAXUTILS_NIGHTLY"] == "nightly":
-#         NAME += "-nightly"
+if "BUILD_JAXKERN_NIGHTLY" in os.environ:
+    if os.environ["BUILD_JAXKERN_NIGHTLY"] == "nightly":
+        NAME += "-nightly"
+        from versioneer import get_versions as original_get_versions
+
+        def get_versions():
+            versions = original_get_versions()
+            return versions
+
+        versioneer.get_versions = get_versions
+
 
 REQUIRES = ["jax>=0.4.0", "jaxlib>=0.4.0", "jaxtyping"]
 
