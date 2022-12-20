@@ -1,36 +1,13 @@
-import io
-import os
-import re
-
 from setuptools import find_packages, setup
+import versioneer
 
 
-# Get version number (function from GPyTorch)
-def read(*names, **kwargs):
-    with io.open(
-        os.path.join(os.path.dirname(__file__), *names),
-        encoding=kwargs.get("encoding", "utf8"),
-    ) as fp:
-        return fp.read()
-
-
-def find_version(*file_paths):
-    version_file = read(*file_paths)
-    version_match = re.search(
-        r"^__version__ = ['\"]([^'\"]*)['\"]", version_file, re.M
-    )
-    if version_match:
-        return version_match.group(1)
-    raise RuntimeError("Unable to find version string.")
-
-
-version = find_version("jaxutils", "__init__.py")
 readme = open("README.md").read()
 
 
 REQUIRES = [
-    "jax>=0.1.67",
-    "jaxlib>=0.1.47",
+    "jax>=0.4.0",
+    "jaxlib>=0.4.0",
 ]
 
 EXTRAS = {
@@ -48,7 +25,8 @@ EXTRAS = {
 
 setup(
     name="JaxUtils",
-    version=version,
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
     author="Daniel Dodd and Thomas Pinder",
     author_email="tompinder@live.co.uk",
     packages=find_packages(".", exclude=["tests"]),

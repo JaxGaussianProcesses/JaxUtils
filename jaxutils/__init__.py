@@ -10,3 +10,6 @@ __version__ = "0.0.2"
 
 
 __all__ = ["PyTree"]
+
+from . import _version
+__version__ = _version.get_versions()['version']
