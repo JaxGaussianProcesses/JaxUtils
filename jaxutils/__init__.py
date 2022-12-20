@@ -16,8 +16,9 @@
 
 from .pytree import PyTree
 from .data import Dataset, verify_dataset
+from . import _version
 
-__version__ = "0.0.3"
+__version__ = _version.get_versions()['version']
 __authors__ = "Thomas Pinder, Daniel Dodd"
 __license__ = "MIT"
 __emails__ = "tompinder@live.co.uk, d.dodd1@lancaster.ac.uk"
@@ -29,9 +30,9 @@ __contributors__ = (
 )
 
 
-
 __all__ = [
     "PyTree",
     "Dataset",
     "verify_dataset",
     ]
+
