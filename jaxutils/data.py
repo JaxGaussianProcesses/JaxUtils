@@ -108,6 +108,16 @@ def _check_shape(X: Float[Array, "N D"], y: Float[Array, "N Q"]) -> None:
             raise ValueError(
                 f"X and y must have the same number of rows. Got X.shape={X.shape} and y.shape={y.shape}."
             )
+        
+    if X.ndim != 2:
+        raise ValueError(
+            f"X must be a 2-dimensional array. Got X.ndim={X.ndim}."
+        )
+
+    if y.ndim != 2:
+        raise ValueError(
+            f"y must be a 2-dimensional array. Got y.ndim={y.ndim}."
+        )
 
 __all__ = [
     "Dataset",
