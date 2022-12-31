@@ -61,6 +61,18 @@ def test_dataset_assertions(nx, ny):
     with pytest.raises(ValueError):
         ds = Dataset(X=x, y=y)
 
+def test_2d_inputs():
+    x = jnp.ones((5,1)))
+    y = jnp.ones(5)
+
+    with pytest.raises(ValueError):
+        ds = Dataset(X=x, y=y)
+
+    x = jnp.ones(5)
+
+    with pytest.raises(ValueError):
+        ds = Dataset(X=x, y=y)
+        
 
 def test_y_none():
     x = jnp.ones((10, 1))
