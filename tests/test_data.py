@@ -22,7 +22,7 @@ from jaxutils.data import Dataset, verify_dataset
 @pytest.mark.parametrize("outd", [1, 2, 10])
 @pytest.mark.parametrize("ind", [1, 2, 10])
 @pytest.mark.parametrize("n2", [1, 10])
-def test_dataset(n, outd, ind, n2):
+def test_dataset(n: int, outd: int, ind: int, n2: int) -> None:
     x = jnp.ones((n, ind))
     y = jnp.ones((n, outd))
     d = Dataset(X=x, y=y)
@@ -54,16 +54,17 @@ def test_dataset(n, outd, ind, n2):
 
 
 @pytest.mark.parametrize("nx, ny", [(1, 2), (2, 1), (10, 5), (5, 10)])
-def test_dataset_assertions(nx, ny):
+def test_dataset_assertions(nx: int, ny: int) -> None:
     x = jnp.ones((nx, 1))
     y = jnp.ones((ny, 1))
     
     with pytest.raises(ValueError):
         ds = Dataset(X=x, y=y)
 
-def test_2d_inputs():
-    x = jnp.ones((5,1)))
-    y = jnp.ones(5)
+@pytest.mark.parametrize("n", [1, 2, 10])
+def test_2d_inputs(n: int) -> None:
+    x = jnp.ones((n,1))
+    y = jnp.ones(n)
 
     with pytest.raises(ValueError):
         ds = Dataset(X=x, y=y)
@@ -74,7 +75,7 @@ def test_2d_inputs():
         ds = Dataset(X=x, y=y)
         
 
-def test_y_none():
+def test_y_none() -> None:
     x = jnp.ones((10, 1))
     d = Dataset(X=x)
     verify_dataset(d)

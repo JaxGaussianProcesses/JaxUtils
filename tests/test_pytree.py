@@ -22,16 +22,17 @@ import jax.numpy as jnp
 import numpy as np
 
 from typing import Any
+from jaxtyping import Float, Array
 from jaxutils import pytree
 
 
 class DummyJittable(pytree.PyTree):
-    def __init__(self, params):
+    def __init__(self, values: Float[Array, "N"]):
         self.name = "dummy"  # Non-JAX property, cannot be traced.
-        self.data = {"params": params}  # Tree property, must be traced recursively.
+        self.data = {"params": values}  # Tree property, must be traced recursively.
 
 
-def test_jittable():
+def test_jittable() -> None:
     @jax.jit
     def get_params(obj):
         return obj.data["params"]
@@ -40,7 +41,7 @@ def test_jittable():
     np.testing.assert_array_equal(get_params(obj), obj.data["params"])
 
 
-def test_vmappable():
+def test_vmappable() -> None:
     def do_sum(obj):
         return obj.data["params"].sum()
 
@@ -57,7 +58,7 @@ def test_vmappable():
     )
 
 
-def test_traceable():
+def test_traceable() -> None:
     @jax.jit
     def inner_fn(obj):
         obj.data["params"] *= 3  # Modification after passing to jitted fn.
@@ -81,7 +82,7 @@ def test_traceable():
     np.testing.assert_array_equal(grad, grad_expected)
 
 
-def test_different_jittables_to_compiled_function():
+def test_different_jittables_to_compiled_function() -> None:
     @jax.jit
     def add_one_to_params(obj):
         obj.data["params"] = obj.data["params"] + 1
@@ -94,7 +95,7 @@ def test_different_jittables_to_compiled_function():
     add_one_to_params(DummyJittable(jnp.ones((5,))))
 
 
-def test_modifying_object_data_does_not_leak_tracers():
+def test_modifying_object_data_does_not_leak_tracers() -> None:
     @jax.jit
     def add_one_to_params(obj):
         obj.data["params"] = obj.data["params"] + 1
@@ -105,7 +106,7 @@ def test_modifying_object_data_does_not_leak_tracers():
     dummy_out.data["params"] -= 1
 
 
-def test_metadata_modification_statements_are_removed_by_compilation():
+def test_metadata_modification_statements_are_removed_by_compilation() -> None:
     @jax.jit
     def add_char_to_name(obj):
         obj.name += "_x"
