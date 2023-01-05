@@ -16,6 +16,7 @@
 
 from .pytree import PyTree
 from .data import Dataset, verify_dataset
+from .dict import concat_dictionaries, merge_dictionaries, sort_dictionary, dict_array_coercion
 
 __authors__ = "Thomas Pinder, Daniel Dodd"
 __license__ = "MIT"
@@ -32,6 +33,10 @@ __all__ = [
     "PyTree",
     "Dataset",
     "verify_dataset",
+    "concat_dictionaries",
+    "merge_dictionaries",
+    "sort_dictionary",
+    "dict_array_coercion",
 ]
 
 from . import _version
