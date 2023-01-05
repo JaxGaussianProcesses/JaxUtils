@@ -78,11 +78,7 @@ class Dataset(PyTree):
     def out_dim(self) -> int:
         """The dimension of the output data."""
         return self.y.shape[1]
-
-    def _add_input(self, X):
-        self.X = X
-        return self
-
+        
 
 def verify_dataset(ds: Dataset) -> None:
     """Apply a series of checks to the dataset to ensure that downstream operations are safe."""

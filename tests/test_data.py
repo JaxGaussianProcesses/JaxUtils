@@ -26,10 +26,14 @@ def test_dataset(n: int, outd: int, ind: int, n2: int) -> None:
     x = jnp.ones((n, ind))
     y = jnp.ones((n, outd))
     d = Dataset(X=x, y=y)
+    
     verify_dataset(d)
     assert d.n == n
     assert d.in_dim == ind
     assert d.out_dim == outd
+
+    assert d.__repr__() == f"- Number of datapoints: {n}\n- Dimension: {ind}"
+    
 
     # Test combine datasets.
     x2 = 2 * jnp.ones((n2, ind))
@@ -50,29 +54,33 @@ def test_dataset(n: int, outd: int, ind: int, n2: int) -> None:
     dunsup = Dataset(y=y)
     assert dunsup.is_unsupervised() is True
 
-
-
-
 @pytest.mark.parametrize("nx, ny", [(1, 2), (2, 1), (10, 5), (5, 10)])
-def test_dataset_assertions(nx: int, ny: int) -> None:
-    x = jnp.ones((nx, 1))
-    y = jnp.ones((ny, 1))
+@pytest.mark.parametrize("outd", [1, 2, 10])
+@pytest.mark.parametrize("ind", [1, 2, 10])
+def test_dataset_assertions(nx: int, ny: int, outd: int, ind: int) -> None:
+    x = jnp.ones((nx, ind))
+    y = jnp.ones((ny, outd))
     
     with pytest.raises(ValueError):
         ds = Dataset(X=x, y=y)
 
 @pytest.mark.parametrize("n", [1, 2, 10])
-def test_2d_inputs(n: int) -> None:
-    x = jnp.ones((n,1))
-    y = jnp.ones(n)
+@pytest.mark.parametrize("outd", [1, 2, 10])
+@pytest.mark.parametrize("ind", [1, 2, 10])
+def test_2d_inputs(n: int, outd: int, ind: int) -> None:
+    x = jnp.ones((n, ind))
+    y = jnp.ones((n, ))
 
     with pytest.raises(ValueError):
         ds = Dataset(X=x, y=y)
 
-    x = jnp.ones(5)
+    x = jnp.ones((n,))
+    y = jnp.ones((n, outd))
 
     with pytest.raises(ValueError):
         ds = Dataset(X=x, y=y)
+
+
         
 
 def test_y_none() -> None:
