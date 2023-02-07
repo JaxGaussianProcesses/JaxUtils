@@ -18,9 +18,12 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float
 from typing import Optional
 
-from .pytree import PyTree
+import equinox as eqx
 
-class Dataset(PyTree):
+class Dataset(eqx.Module):
+    X: Optional[Float[Array, "N D"]] = None
+    y: Optional[Float[Array, "N Q"]] = None
+
     """Dataset class."""
 
     #TODO: Consider HeterotopicDataset and IsotopicDataset abstractions.
