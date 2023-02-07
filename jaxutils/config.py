@@ -93,35 +93,35 @@ def get_default_config() -> ConfigDict:
     # Covariance matrix stabilising jitter
     config.jitter = 1e-6
 
-    FillScaleTriL = dx.Chain(
-        [
-            tfb.FillScaleTriL(diag_shift=jnp.array(config.jitter)),
-        ]
-    )
+    # FillScaleTriL = dx.Chain(
+    #     [
+    #         tfb.FillScaleTriL(diag_shift=jnp.array(config.jitter)),
+    #     ]
+    # )
 
-    # Default bijections
-    config.transformations = transformations = ConfigDict()
-    transformations.positive_transform = Softplus
-    transformations.identity_transform = Identity
-    transformations.triangular_transform = FillScaleTriL
+    # # Default bijections
+    # config.transformations = transformations = ConfigDict()
+    # transformations.positive_transform = Softplus
+    # transformations.identity_transform = Identity
+    # transformations.triangular_transform = FillScaleTriL
 
-    # Default parameter transforms
-    transformations.alpha = "positive_transform"
-    transformations.lengthscale = "positive_transform"
-    transformations.variance = "positive_transform"
-    transformations.smoothness = "positive_transform"
-    transformations.shift = "positive_transform"
-    transformations.obs_noise = "positive_transform"
-    transformations.latent = "identity_transform"
-    transformations.basis_fns = "identity_transform"
-    transformations.offset = "identity_transform"
-    transformations.inducing_inputs = "identity_transform"
-    transformations.variational_mean = "identity_transform"
-    transformations.variational_root_covariance = "triangular_transform"
-    transformations.natural_vector = "identity_transform"
-    transformations.natural_matrix = "identity_transform"
-    transformations.expectation_vector = "identity_transform"
-    transformations.expectation_matrix = "identity_transform"
+    # # Default parameter transforms
+    # transformations.alpha = "positive_transform"
+    # transformations.lengthscale = "positive_transform"
+    # transformations.variance = "positive_transform"
+    # transformations.smoothness = "positive_transform"
+    # transformations.shift = "positive_transform"
+    # transformations.obs_noise = "positive_transform"
+    # transformations.latent = "identity_transform"
+    # transformations.basis_fns = "identity_transform"
+    # transformations.offset = "identity_transform"
+    # transformations.inducing_inputs = "identity_transform"
+    # transformations.variational_mean = "identity_transform"
+    # transformations.variational_root_covariance = "triangular_transform"
+    # transformations.natural_vector = "identity_transform"
+    # transformations.natural_matrix = "identity_transform"
+    # transformations.expectation_vector = "identity_transform"
+    # transformations.expectation_matrix = "identity_transform"
 
     return config
 
