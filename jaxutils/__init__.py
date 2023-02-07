@@ -14,20 +14,14 @@
 # ==============================================================================
 
 
-from .pytree import PyTree
+from .base import Base
+from .bijector import Bijector
+from .objective import Objective
 from .data import Dataset, verify_dataset
-from .dict import (
-    concat_dictionaries,
-    merge_dictionaries,
-    sort_dictionary,
-    dict_array_coercion,
-)
-from .parameters import (
-    ParameterState,
-    initialise,
-    recursive_items,
-    recursive_complete,
-)
+from .params import param, build_bijectors, build_trainables, constrain, unconstrain
+from .abstractions import fit, fit_batches, get_batch
+from .progress_bar import progress_bar_scan
+
 
 __authors__ = "Thomas Pinder, Daniel Dodd"
 __license__ = "MIT"
@@ -41,17 +35,20 @@ __contributors__ = (
 
 
 __all__ = [
-    "PyTree",
+    "Base",
+    "Bijector",
+    "Objective",
     "Dataset",
     "verify_dataset",
-    "concat_dictionaries",
-    "merge_dictionaries",
-    "sort_dictionary",
-    "dict_array_coercion",
-    "ParameterState",
-    "initialise",
-    "recursive_items",
-    "recursive_complete",
+    "param",
+    "build_bijectors",
+    "build_trainables",
+    "constrain",
+    "unconstrain",
+    "fit",
+    "fit_batches",
+    "get_batch",
+    "progress_bar_scan",
 ]
 
 from . import _version
