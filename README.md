@@ -4,7 +4,54 @@
 
 `JaxUtils` provides utility functions for the [`JaxGaussianProcesses`]() ecosystem.</h2>
 
-# Contents
+
+## Training a Linear Model is easy peasy.
+```python
+import jaxutils as ju
+
+from jaxutils.config import Identity
+
+import jax.numpy as jnp
+import jax.random as jr
+import optax as ox
+
+
+class LinearModel(ju.Base):
+    weight: float =  ju.param(Identity)
+    bias: float = ju.param(Identity)
+
+    def __call__(self, x):
+        return self.weight * x + self.bias
+
+
+class LeastSquares(ju.Objective):
+
+    def evaluate(self, model: LinearModel, train_data: ju.Dataset) -> float:
+        return jnp.sum((train_data.y - model(train_data.X)) ** 2)
+
+
+
+x = jnp.linspace(0.0, 1.0, 20).reshape(-1, 1)
+y = 2.0 * x + 1.0 + jr.normal(jr.PRNGKey(0), x.shape).reshape(-1, 1)
+
+D = ju.Dataset(x, y)
+
+m = LinearModel(weight=1.0, bias=1.0)
+bij = ju.build_bijectors(m)
+tr = ju.build_trainables(m)
+loss = LeastSquares()
+
+
+infst = ju.fit(loss, m, bij, tr, D, ox.sgd(0.01), 10000)
+
+model = infst.model
+
+print(model.weight, model.bias)
+```
+
+
+
+# Contents - TO UPDATE.
 
 - [PyTree](#pytree)
 - [Dataset](#dataset)
