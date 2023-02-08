@@ -9,14 +9,14 @@
 ```python
 import jaxutils as ju
 
-from jaxutils.config import Identity
+from jaxutils.bijectors import Identity
 
 import jax.numpy as jnp
 import jax.random as jr
 import optax as ox
 
 # (1) Create a dataset:
-X = jnp.linspace(0.0, 1.0, 20).reshape(-1, 1)
+X = jnp.linspace(0.0, 10.0, 100).reshape(-1, 1)
 y = 2.0 * X + 1.0 + jr.normal(jr.PRNGKey(0), X.shape).reshape(-1, 1)
 D = ju.Dataset(X, y)
 
@@ -41,11 +41,11 @@ class MeanSqaureError(ju.Objective):
 loss = MeanSqaureError()
 
 # (4) Train!
-model, hist = ju.fit(loss, model, D, ox.sgd(0.01), 10000)
+model, hist = ju.fit(model, loss, D, ox.sgd(0.0001), 10000)
 
+# (5) Check the results:
 print(model.weight, model.bias)
 ```
-
 
 
 # Contents - TO UPDATE.
