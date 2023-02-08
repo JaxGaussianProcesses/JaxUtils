@@ -24,10 +24,8 @@ from jax.random import KeyArray
 from jaxtyping import Array, Float
 from typing import Any
 
-from .params import constrain, stop_gradients, unconstrain
-from .module import Module
-
-from .data import Dataset
+from .module import Module, constrain, unconstrain, stop_gradients
+from .dataset import Dataset
 from .objective import Objective
 from .progress_bar import progress_bar_scan
 

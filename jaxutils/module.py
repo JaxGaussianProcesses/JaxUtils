@@ -14,11 +14,13 @@
 # ==============================================================================
 
 import jax.tree_util as jtu
-from dataclasses import fields
+from jax import lax
+
+from dataclasses import fields, field
 from typing import List
 
-
 import equinox as eqx
+
 from .bijectors import Bijector
 
 
@@ -40,6 +42,8 @@ class _cache_property_comprising_static_fields:
         value = self.prop(instance)
         object.__setattr__(instance, self.name, value)
         return value
+
+
 
 
 class Module(eqx.Module):
@@ -69,41 +73,40 @@ class Module(eqx.Module):
 
     @_cache_property_comprising_static_fields
     def trainables(self):
+        """Return a default PyTree of model trainability statuses."""
         return _default_trainables(self)
 
 
 
 
-def _default_trainables(obj: Module) -> eqx.Module:
+def _default_trainables(obj: Module) -> Module:
     """
-    Construct a dictionary of trainable statuses for each parameter. By default,
+    Construct trainable statuses for each parameter. By default,
     every parameter within the model is trainable.
 
     Args:
-        obj (Dict): The parameter set for which trainable statuses should be
+        obj (Module): The parameter set for which trainable statuses should be
             derived from.
-        status (bool): The status of each parameter. Default is True.
 
     Returns:
-        Dict: A dictionary of boolean trainability statuses. The dictionary is
-            equal in structure to the input params dictionary.
+        Module: A Module of boolean trainability statuses.
     """
     return jtu.tree_map(lambda _: True, obj)
 
 
-def _default_bijectors(obj: Module) -> eqx.Module:
-    """Given a Base object, return an equinox Module of bijectors comprising the same structure.
+def _default_bijectors(obj: Module) -> Module:
+    """Given a Module object, return an equinox Module of bijectors comprising the same structure.
 
     Args:
-        obj(Base): A Base object.
+        obj(Module): A Module object.
     
     Returns:
-        eqx.Module: A Module of bijectors.
+        Module: A Module of bijectors.
     """
 
     _, treedef = jtu.tree_flatten(obj)
 
-    def _unpack_bijectors_from_meta(cls: eqx.Module) -> List[Bijector]:
+    def _unpack_bijectors_from_meta(cls: Module) -> List[Bijector]:
         """Unpack bijectors from metatdata."""
         bijectors = []
 
@@ -121,7 +124,7 @@ def _default_bijectors(obj: Module) -> eqx.Module:
                     trans = field_.metadata["transform"]
                     bijectors.append(trans)
 
-                elif isinstance(value, eqx.Module):
+                elif isinstance(value, Module):
                     for value_ in _unpack_bijectors_from_meta(value):
                         bijectors.append(value_)
 
@@ -134,7 +137,69 @@ def _default_bijectors(obj: Module) -> eqx.Module:
 
 
 
+def param(transform: Bijector):
+    """Set leaf node metadata for a parameter.
+
+    Args:
+        transform: A bijector to apply to the parameter.
+
+    Returns:
+        A field with the metadata set.
+    """
+    return field(metadata={"transform": transform})
+
+
+def constrain(obj: Module) -> Module:
+    """
+    Transform model parameters to the constrained space for corresponding
+    bijectors.
+
+    Args:
+        obj (Module): The Base that is to be transformed.
+
+    Returns:
+        Base: A transformed parameter set. The dictionary is equal in
+            structure to the input params dictionary.
+    """
+    return jtu.tree_map(lambda p, t: t.forward(p), obj, obj.bijectors)
+
+
+def unconstrain(obj: Module) -> Module:
+    """
+    Transform model parameters to the unconstrained space for corresponding
+    bijectors.
+
+    Args:
+        obj (Module): The Base that is to be transformed.
+
+    Returns:
+        Base: A transformed parameter set. The dictionary is equal in
+            structure to the input params dictionary.
+    """
+    return jtu.tree_map(lambda p, t: t.inverse(p), obj, obj.bijectors)
+
+
+def stop_gradients(obj: Module) -> Module:
+    """
+    Stop gradients flowing through parameters whose correponding leaf node status in the trainables PyTree is
+    False.
+
+    Args:
+        module (Module): The jaxutils Module to set the trainability of.
+
+    Returns:
+        Module: The jaxutils Module of parameters with stopped gradients.
+    """
+
+    return jtu.tree_map(lambda p, t: lax.cond(t, lambda x: x, lax.stop_gradient, p), obj, obj.trainables)
+
+
+
 
 __all__ = [
     "Module",
+    "param",
+    "constrain",
+    "unconstrain",
+    "stop_gradients",
 ]

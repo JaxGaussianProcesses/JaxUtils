@@ -13,12 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-from .module import Module
+from .module import Module, param, constrain, unconstrain
 from .bijectors import Bijector, Identity, Softplus
 from .objective import Objective
-from .data import Dataset, verify_dataset
-from .params import param, constrain, unconstrain
-from .abstractions import fit, get_batch
+from .dataset import Dataset, verify_dataset
+from .fit import fit, get_batch
 from .progress_bar import progress_bar_scan
 
 

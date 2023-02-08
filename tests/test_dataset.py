@@ -15,7 +15,7 @@
 
 import jax.numpy as jnp
 import pytest
-from jaxutils.data import Dataset, verify_dataset
+from jaxutils.dataset import Dataset, verify_dataset
 
 
 @pytest.mark.parametrize("n", [1, 10])

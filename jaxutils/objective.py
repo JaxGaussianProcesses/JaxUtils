@@ -16,7 +16,7 @@
 import abc
 import equinox as eqx
 
-from .data import Dataset
+from .dataset import Dataset
 from .module import Module
 
 class Objective(eqx.Module):
