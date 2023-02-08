@@ -33,6 +33,9 @@ class Objective(eqx.Module):
         Returns:
             Objective: An objective function.
         """
+
+        if not isinstance(negative, bool):
+            raise TypeError("negative must be a bool.")
         
         self.negative = negative
         self.constant = -1.0 if negative else 1.0
@@ -53,7 +56,6 @@ class Objective(eqx.Module):
     @abc.abstractmethod
     def evaluate(self, model: Module, train_data: Dataset) -> float:
         """Evaluate the objective function."""
-        raise NotImplementedError
 
 
 __all__ = [

@@ -29,9 +29,11 @@ from .dataset import Dataset
 from .objective import Objective
 from .progress_bar import progress_bar_scan
 
+import equinox as eqx
 
 
 def fit(
+    *,
     model: Module,
     objective: Objective,
     train_data: Dataset,
@@ -46,10 +48,8 @@ def fit(
     Optimisers used here should originate from Optax.
 
     Args:
-        objective (Objective): The objective function that we are optimising with respect to.
         model (eqx.Module): The model that is to be optimised.
-        bijectors (eqx.Module): The bijectors that are to be used to transform the model parameters.
-        trainables (eqx.Module): The trainables that are to be used to determine which parameters are to be optimised.
+        objective (Objective): The objective function that we are optimising with respect to.
         optim (GradientTransformation): The Optax optimiser that is to be used for learning a parameter set.
         num_iters (Optional[int]): The number of optimisation steps to run. Defaults to 100.
         batch_size (Optional[int]): The size of the mini-batch to use. Defaults to -1 (i.e. full batch).
@@ -61,7 +61,7 @@ def fit(
         Tuple[Module, Array]: A Tuple comprising the optimised model and training history respectively.
     """
 
-    _check_types(model, objective, train_data, optim, num_iters, log_rate, verbose, None, None)
+    _check_types(model, objective, train_data, optim, num_iters, log_rate, verbose, key, batch_size)
 
     # Unconstrained space loss function with stop-gradient rule for non-trainable params.
     def loss(model: Module, batch: Dataset) -> Float[Array, "1"]:
@@ -169,17 +169,16 @@ def _check_types(
 
     if not isinstance(verbose, bool):
         raise TypeError("verbose must be of type bool")
-
-    if key is not None:
-        if not isinstance(key, KeyArray):
-            raise TypeError("key must be of type jax.random.KeyArray")
     
     if batch_size is not None:
         if not isinstance(batch_size, int):
             raise TypeError("batch_size must be of type int")
 
         if not batch_size >  0:
-            raise ValueError(f"batch_size must be positive, but got batch_size={batch_size}")
+            if batch_size == -1:
+                pass
+            else:
+                raise ValueError(f"batch_size must be positive, but got batch_size={batch_size}")
         
         if not batch_size < train_data.n:
             raise ValueError(f"batch_size must be less than train_data.n, but got batch_size={batch_size} and train_data.n={train_data.n}")

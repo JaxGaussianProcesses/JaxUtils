@@ -21,6 +21,9 @@ from jaxutils.dataset import Dataset
 
 def test_objective() -> None:
     with pytest.raises(TypeError):
+        Objective()
+
+    with pytest.raises(TypeError):
         Objective(negative=False)
 
     with pytest.raises(TypeError):
@@ -45,3 +48,7 @@ def test_objective() -> None:
     data_new = Dataset(jnp.linspace(0, 1, 10).reshape(-1, 1), jnp.linspace(2, 5, 10).reshape(-1, 1))
     objective_negative = DummyObjective(negative=True)
     assert objective(model, data_new) + objective_negative(model, data_new) == 0.0
+
+    # Test non-bool negative
+    with pytest.raises(TypeError):
+        objective_negative = DummyObjective(negative=123)

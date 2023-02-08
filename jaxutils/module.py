@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+from __future__ import annotations
+
 import jax.tree_util as jtu
 from jax import lax
 
@@ -24,69 +26,23 @@ import equinox as eqx
 from .bijectors import Bijector
 
 
-class _cache_property_comprising_static_fields:
-    """Be careful with this --- highly JAX incompatible!!
-
-    Courtesy of Kernex.
-
-    Fine for properties that depend *only* on static fields. For dynamic fields, this will end in tears.
-    """
-
-    def __init__(self, prop):
-        """ Does your prop have a dynamic field? If so, STOP!"""
-
-        self.name = prop.__name__
-        self.prop = prop
-
-    def __get__(self, instance, owner):
-        value = self.prop(instance)
-        object.__setattr__(instance, self.name, value)
-        return value
-
-
-
-
 class Module(eqx.Module):
     """Base class for all objects of the JaxGaussianProcesses ecosystem.""" 
-
-    # TODO: Add checks for param fields. WE NEED TO ENSURE ALL LEAVES ARE PARAMS AND ONLY PARAMS.
-
-    def set_bijectors(self, bijectors):
-
-        # TODO: Throwin hostcall back warning. This completely breaks the immutability of the object.
-        # YOU DO NOT WANT TO DO THIS WITHIN A JIT REGION.
-        # Really, this is a hack. We need to create a new object not modify the existing one.
-        object.__setattr__(self, "bijectors", bijectors)
-
-    def set_trainables(self, trainables):
-
-        # TODO: Throwin hostcall back warning. This completely breaks the immutability of the object.
-        # YOU DO NOT WANT TO DO THIS WITHIN A JIT REGION.
-        # Really, this is a hack. We need to create a new object not modify the existing one.
-        object.__setattr__(self, "trainables", trainables)
-
-
-    @_cache_property_comprising_static_fields
-    def bijectors(self):
-        """Return a default PyTree of model bijectors."""
-        return _default_bijectors(self)
-
-    @_cache_property_comprising_static_fields
+   
+    @property
     def trainables(self):
-        """Return a default PyTree of model trainability statuses."""
-        return _default_trainables(self)
+        return default_trainables(self)
+
+    @property
+    def bijectors(self):
+        return default_bijectors(self)
 
 
 
-
-def _default_trainables(obj: Module) -> Module:
+def default_trainables(obj: Module) -> Module:
     """
     Construct trainable statuses for each parameter. By default,
     every parameter within the model is trainable.
-
-    Args:
-        obj (Module): The parameter set for which trainable statuses should be
-            derived from.
 
     Returns:
         Module: A Module of boolean trainability statuses.
@@ -94,11 +50,8 @@ def _default_trainables(obj: Module) -> Module:
     return jtu.tree_map(lambda _: True, obj)
 
 
-def _default_bijectors(obj: Module) -> Module:
+def default_bijectors(obj: Module) -> Module:
     """Given a Module object, return an equinox Module of bijectors comprising the same structure.
-
-    Args:
-        obj(Module): A Module object.
     
     Returns:
         Module: A Module of bijectors.
@@ -181,19 +134,23 @@ def unconstrain(obj: Module) -> Module:
 
 def stop_gradients(obj: Module) -> Module:
     """
-    Stop gradients flowing through parameters whose correponding leaf node status in the trainables PyTree is
+    Stop the gradients flowing through parameters whose trainable status is
     False.
-
     Args:
-        module (Module): The jaxutils Module to set the trainability of.
-
+        params (Dict): The parameter set for which trainable statuses should
+            be derived from.
+        trainables (Dict): A dictionary of boolean trainability statuses. The
+            dictionary is equal in structure to the input params dictionary.
     Returns:
-        Module: The jaxutils Module of parameters with stopped gradients.
+        Dict: A dictionary parameters. The dictionary is equal in structure to
+            the input params dictionary.
     """
 
-    return jtu.tree_map(lambda p, t: lax.cond(t, lambda x: x, lax.stop_gradient, p), obj, obj.trainables)
+    def _stop_grad(p, t):
+        return lax.cond(t, lambda x: x, lax.stop_gradient, p)
 
 
+    return jtu.tree_map(lambda p, t: _stop_grad(p, t), obj, obj.trainables)
 
 
 __all__ = [
