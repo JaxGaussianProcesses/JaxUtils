@@ -17,7 +17,7 @@ import abc
 import equinox as eqx
 
 from .data import Dataset
-from .base import Base
+from .module import Module
 
 class Objective(eqx.Module):
     """Base class for objective functions."""
@@ -37,7 +37,7 @@ class Objective(eqx.Module):
         self.negative = negative
         self.constant = -1.0 if negative else 1.0
 
-    def __call__(self, model: Base, train_data: Dataset) -> float:
+    def __call__(self, model: Module, train_data: Dataset) -> float:
         """Evaluate the objective function.
 
         Args:
@@ -51,7 +51,7 @@ class Objective(eqx.Module):
         return self.constant * self.evaluate(model, train_data)
 
     @abc.abstractmethod
-    def evaluate(self, model: Base, train_data: Dataset) -> float:
+    def evaluate(self, model: Module, train_data: Dataset) -> float:
         """Evaluate the objective function."""
         raise NotImplementedError
 

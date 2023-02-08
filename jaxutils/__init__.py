@@ -14,12 +14,12 @@
 # ==============================================================================
 
 
-from .base import Base
+from .module import Module
 from .bijector import Bijector
 from .objective import Objective
 from .data import Dataset, verify_dataset
-from .params import param, build_bijectors, build_trainables, constrain, unconstrain
-from .abstractions import fit, fit_batches, get_batch
+from .params import param, constrain, unconstrain
+from .abstractions import fit, get_batch
 from .progress_bar import progress_bar_scan
 
 
@@ -35,7 +35,7 @@ __contributors__ = (
 
 
 __all__ = [
-    "Base",
+    "Module",
     "Bijector",
     "Objective",
     "Dataset",
@@ -46,7 +46,6 @@ __all__ = [
     "constrain",
     "unconstrain",
     "fit",
-    "fit_batches",
     "get_batch",
     "progress_bar_scan",
 ]

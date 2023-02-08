@@ -13,62 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import annotations
-
-import equinox as eqx
-from dataclasses import fields, field
-from dataclasses import field, fields
-from typing import List
+from dataclasses import field
 
 import jax.tree_util as jtu
 from jax import lax
 
-from .config import Identity
-from .base import Base
 from .bijector import Bijector
-
-
-def build_bijectors(obj: Base) -> eqx.Module:
-    """Given a Base object, return an equinox Module of bijectors comprising the same structure.
-
-    Args:
-        obj(Base): A Base object.
-    
-    Returns:
-        eqx.Module: A Module of bijectors.
-    """
-
-    _, treedef = jtu.tree_flatten(obj)
-
-    def _unpack_bijectors_from_meta(cls: eqx.Module):
-        """Unpack bijectors from metatdata."""
-        bijectors = []
-
-        for field_ in fields(cls):
-            name = field_.name
-            
-            try:
-                value = cls.__dict__[name]
-            except KeyError:
-                continue
-
-            if not field_.metadata.get("static", False):
-
-                if field_.metadata.get("transform", None) is not None:
-                    trans = field_.metadata["transform"]
-                    bijectors.append(trans)
-
-                elif isinstance(value, eqx.Module):
-                    for value_ in _unpack_bijectors_from_meta(value):
-                        bijectors.append(value_)
-
-                else:
-                    bijectors.append(value)
-            
-        return bijectors
-    
-    return treedef.unflatten(_unpack_bijectors_from_meta(obj))
-
+from .module import Module
 
 
 def param(transform: Bijector):
@@ -81,99 +32,57 @@ def param(transform: Bijector):
     Returns:
         A field with the metadata set.
     """
-    
-    # # Create metadata dictionary.
-    # try:
-    #     metadata = dict(kwargs["metadata"])
-    # except KeyError:
-    #     metadata = kwargs["metadata"] = {}
-
-    # if "param" in metadata:
-    #     raise ValueError("Cannot use metadata with `param` already set.")
-    # metadata["param"] = True
-
-
-    # # Param has a transform.
-    # if "transform" in metadata:
-    #     raise ValueError("Cannot use metadata with `transform` already set.")
-    # metadata["transform"] = transform
-
     return field(metadata={"transform": transform})
 
 
-def constrain(obj: Base, bij: eqx.Module) -> Base:
+def constrain(obj: Module) -> Module:
     """
-    Transform the parameters to the constrained space for corresponding
+    Transform model parameters to the constrained space for corresponding
     bijectors.
 
     Args:
-        obj (Base): The Base that is to be transformed.
-        bij (Dict): The bijectors that are to be used for
-            transformation.
+        obj (Module): The Base that is to be transformed.
 
     Returns:
         Base: A transformed parameter set. The dictionary is equal in
             structure to the input params dictionary.
     """
-    #TODO: This will break if a leaf node is not a parameter, i.e., does not have a transform!
-    return jtu.tree_map(lambda param, trans: trans.forward(param), obj, bij)
+    return jtu.tree_map(lambda p, t: t.forward(p), obj, obj.bijectors)
 
 
-def unconstrain(obj: Base, bij: eqx.Module) -> Base:
+def unconstrain(obj: Module) -> Module:
     """
-    Transform the parameters to the unconstrained space for corresponding
+    Transform model parameters to the unconstrained space for corresponding
     bijectors.
 
     Args:
-        obj (Base): The Base that is to be transformed.
-        bij (Dict): The bijectors that are to be used for
-            transformation.
+        obj (Module): The Base that is to be transformed.
 
     Returns:
-        Base: A transformed model object.
+        Base: A transformed parameter set. The dictionary is equal in
+            structure to the input params dictionary.
     """
-    #TODO: This will break if a leaf node is not a parameter, i.e., does not have a transform!
-    return jtu.tree_map(lambda param, trans: trans.inverse(param), obj, bij)
+    return jtu.tree_map(lambda p, t: t.inverse(p), obj, obj.bijectors)
 
 
-def build_trainables(obj: Base, status: bool = True) -> eqx.Module:
-    """
-    Construct a dictionary of trainable statuses for each parameter. By default,
-    every parameter within the model is trainable.
-
-    Args:
-        obj (Dict): The parameter set for which trainable statuses should be
-            derived from.
-        status (bool): The status of each parameter. Default is True.
-
-    Returns:
-        Dict: A dictionary of boolean trainability statuses. The dictionary is
-            equal in structure to the input params dictionary.
-    """
-    return jtu.tree_map(lambda _: status, obj)
-
-
-def trainable_params(module: eqx.Module, trainables: eqx.Module) -> eqx.Module:
+def stop_gradients(obj: Module) -> Module:
     """
     Stop the gradients flowing through parameters whose trainable status is
     False.
 
     Args:
         module (eqx.Module): The equinox Module to set the trainability of.
-        trainables (eqx.Module): The equinox Module of trainability statuses.
 
     Returns:
         eqx.Module: The equinox Module of parameters with stopped gradients.
     """
 
-    return jtu.tree_map(lambda p, t: lax.cond(t, lambda x: x, lax.stop_gradient, p), module, trainables)
+    return jtu.tree_map(lambda p, t: lax.cond(t, lambda x: x, lax.stop_gradient, p), obj, obj.trainables)
 
 
 __all__ = [
     "param",
-    "build_bijectors",
     "constrain",
     "unconstrain",
-    "build_trainables",
-    "trainable_params",
+    "stop_gradients",
 ]
