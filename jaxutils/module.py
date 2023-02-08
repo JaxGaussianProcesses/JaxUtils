@@ -19,6 +19,7 @@ from typing import List
 
 
 import equinox as eqx
+from .bijectors import Bijector
 
 
 class _cache_property_comprising_static_fields:
@@ -102,7 +103,7 @@ def _default_bijectors(obj: Module) -> eqx.Module:
 
     _, treedef = jtu.tree_flatten(obj)
 
-    def _unpack_bijectors_from_meta(cls: eqx.Module) -> List[None]:
+    def _unpack_bijectors_from_meta(cls: eqx.Module) -> List[Bijector]:
         """Unpack bijectors from metatdata."""
         bijectors = []
 

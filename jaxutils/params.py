@@ -18,7 +18,7 @@ from dataclasses import field
 import jax.tree_util as jtu
 from jax import lax
 
-from .bijector import Bijector
+from .bijectors import Bijector
 from .module import Module
 
 
@@ -27,7 +27,6 @@ def param(transform: Bijector):
 
     Args:
         transform: A bijector to apply to the parameter.
-        static: Whether the parameter is static or not.
 
     Returns:
         A field with the metadata set.
@@ -67,14 +66,14 @@ def unconstrain(obj: Module) -> Module:
 
 def stop_gradients(obj: Module) -> Module:
     """
-    Stop the gradients flowing through parameters whose trainable status is
+    Stop gradients flowing through parameters whose correponding leaf node status in the trainables PyTree is
     False.
 
     Args:
-        module (eqx.Module): The equinox Module to set the trainability of.
+        module (Module): The jaxutils Module to set the trainability of.
 
     Returns:
-        eqx.Module: The equinox Module of parameters with stopped gradients.
+        Module: The jaxutils Module of parameters with stopped gradients.
     """
 
     return jtu.tree_map(lambda p, t: lax.cond(t, lambda x: x, lax.stop_gradient, p), obj, obj.trainables)

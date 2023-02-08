@@ -118,6 +118,9 @@ def _check_shape(X: Float[Array, "N D"], y: Float[Array, "N Q"]) -> None:
             f"y must be a 2-dimensional array. Got y.ndim={y.ndim}."
         )
 
+
 __all__ = [
     "Dataset",
+    "slice",
+    "verify_dataset",
 ]

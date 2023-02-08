@@ -13,9 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-
 from .module import Module
-from .bijector import Bijector
+from .bijectors import Bijector, Identity, Softplus
 from .objective import Objective
 from .data import Dataset, verify_dataset
 from .params import param, constrain, unconstrain
@@ -33,10 +32,11 @@ __contributors__ = (
     "https://github.com//JaxGaussianProcesses/JaxUtils/graphs/contributors"
 )
 
-
 __all__ = [
     "Module",
     "Bijector",
+    "Identity",
+    "Softplus",
     "Objective",
     "Dataset",
     "verify_dataset",

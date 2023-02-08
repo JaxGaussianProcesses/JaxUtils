@@ -14,13 +14,35 @@
 # ==============================================================================
 
 import equinox as eqx
+import jax.numpy as jnp
+from typing import Callable
 
 class Bijector(eqx.Module):
-    """Base class for bijectors."""
-    # This is for typing. We will develop equinox bijectors as part of a separate probabilistic programming library in future.
-    pass
+    """Base class for bijectors.
+
+    All you need to do is define a forward and inverse transformation.
+
+    Adding log_det_jacobian's etc., is on the TODO list of this class.
+    """
+    forward: Callable = eqx.static_field()
+    inverse: Callable = eqx.static_field()
+
+
+"""Identity bijector."""
+Identity = Bijector(forward=lambda x: x, inverse=lambda x: x)
+
+"""Softplus bijector."""
+Softplus = Bijector(
+    forward=lambda x: jnp.log(1 + jnp.exp(x)),
+    inverse=lambda x: jnp.log(jnp.exp(x) - 1.0),
+)
+
+"""Triangular bijector."""
+#TODO: Add triangular bijector.
 
 
 __all__ = [
     "Bijector",
+    "Identity",
+    "Softplus", 
 ]
