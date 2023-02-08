@@ -2,84 +2,88 @@
 
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/JaxGaussianProcesses/JaxUtils/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/JaxGaussianProcesses/JaxUtils/tree/master)
 
-`JaxUtils` provides utility functions for the [`JaxGaussianProcesses`]() ecosystem.</h2>
+[`JaxUtils`](https://github.com/JaxGaussianProcesses/JaxUtils) is a lightweight library built on [`Equinox`](https://github.com/patrick-kidger/equinox) purposed to provide clean (and fast) model training functionality. This library also serves as a backend for the [`JaxGaussianProcesses`]() ecosystem.</h2>
 
 
-## Training a Linear Model is easy peasy.
+# Contents
+
+- [Overview](#overview)
+- [Dataset](#dataset)
+
+# Overview
+
+## ...
+
+## ...
+
+## Linear Model example.
+
+We fit a simple one-dimensional linear regression model with a `weight` and a `bias` parameter.
+
+### (1) Ceate a dataset
+
 ```python
+# Import dependancies.
 import jaxutils as ju
-
-from jaxutils.bijectors import Identity
-
 import jax.numpy as jnp
 import jax.random as jr
 import optax as ox
 
-# (1) Create a dataset:
+
+# Simulate labels.
+key = jr.PRNGKey(42)
 X = jnp.linspace(0.0, 10.0, 100).reshape(-1, 1)
-y = 2.0 * X + 1.0 + jr.normal(jr.PRNGKey(0), X.shape).reshape(-1, 1)
+y = 2.0 * X + 1.0 + jr.normal(key, X.shape)
+
+# Create dataset object.
 D = ju.Dataset(X, y)
+```
 
+### (2) Define your model
 
-# (2) Define your model:
+A model is defined through inheriting from the `JaxUtils`'s `Module` object. 
+
+```python
 class LinearModel(ju.Module):
-    weight: float =  ju.param(Identity)
-    bias: float = ju.param(Identity)
+    weight: float =  ju.param(ju.Identity)
+    bias: float = ju.param(ju.Identity)
 
     def __call__(self, x):
         return self.weight * x + self.bias
 
 model = LinearModel(weight=1.0, bias=1.0)
+```
+
+The parameters are marked via the `param` field, whose argument is the default `Bijector` transformation for mapping the parameters to the unconstrained space for optimisation. In this case both of our `weight` and `bias` parameters are defined on the reals, so we use the `Identity` transform. Just like in typicall `Equinox` code, we can (optionally) define a foward pass of the model through the `__call__` method.
 
 
-# (3) Define your loss function:
+
+### (3) Define your objective
+
+We can define any objective function, such as the mean-square-error, via inheriting from the `Objective` object as follows.
+
+```python
 class MeanSqaureError(ju.Objective):
 
     def evaluate(self, model: LinearModel, train_data: ju.Dataset) -> float:
         return jnp.sum((train_data.y - model(train_data.X)) ** 2)
 
 loss = MeanSqaureError()
+```
 
-# (4) Train!
+### (4) Train!
+
+We are now ready to train our model. This can simply be done using the `fit` callable.
+
+```python
+# Optimisation loop.
 model, hist = ju.fit(model, loss, D, ox.sgd(0.0001), 10000)
 
-# (5) Check the results:
+# Print parameter values.
 print(model.weight, model.bias)
 ```
 
 
-# Contents - TO UPDATE.
-
-- [PyTree](#pytree)
-- [Dataset](#dataset)
-
-# PyTree
-
-## Overview
-
-`jaxutils.PyTree` is a mixin class for [registering a python class as a JAX PyTree](https://jax.readthedocs.io/en/latest/pytrees.html#extending-pytrees). You would define your Python class as follows.
-
-```python
-class MyClass(jaxutils.PyTree):
-    ...
-
-```
-
-## Example
-
-```python
-import jaxutils
-
-from jaxtyping import Float, Array
-
-class Line(jaxutils.PyTree):
-    def __init__(self, gradient: Float[Array, "1"], intercept: Float[Array, "1"]) -> None
-        self.gradient = gradient
-        self.intercept = intercept
-
-    def y(self, x: Float[Array, "N"]) -> Float[Array, "N"]
-        return x * self.gradient + self.intercept
-```
 
 # Dataset
 
