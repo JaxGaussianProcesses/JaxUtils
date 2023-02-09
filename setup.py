@@ -44,6 +44,7 @@ REQUIRES = ["jax>=0.4.0",
             "ml-collections==0.1.0",
             "equinox",
             "optax",
+            "tqdm",
             ]
 
 EXTRAS = {
