@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import jax.tree_util as jtu
+import jax
 from jax import lax
 
 from dataclasses import fields, field
@@ -27,16 +28,9 @@ from .bijectors import Bijector
 
 
 class Module(eqx.Module):
-    """Base class for all objects of the JaxGaussianProcesses ecosystem.""" 
-   
-    @property
-    def trainables(self):
-        return default_trainables(self)
+    """Base class for all objects of the JaxGaussianProcesses ecosystem."""
 
-    @property
-    def bijectors(self):
-        return default_bijectors(self)
-
+    #TODO: Check all (dynamic) leaf nodes are marked by the `param` field.
 
 
 def default_trainables(obj: Module) -> Module:
@@ -52,41 +46,43 @@ def default_trainables(obj: Module) -> Module:
 
 def default_bijectors(obj: Module) -> Module:
     """Given a Module object, return an equinox Module of bijectors comprising the same structure.
+
+    Args:
+        obj (Module): The PyTree object whoose default bijectors (from the param field) you would to obtain.
     
     Returns:
-        Module: A Module of bijectors.
+        Module: A PyTree of bijectors comprising the same structure as `obj`.
     """
 
     _, treedef = jtu.tree_flatten(obj)
 
-    def _unpack_bijectors_from_meta(cls: Module) -> List[Bijector]:
+    def _unpack_bijectors_from_meta(obj: Module) -> List[Bijector]:
         """Unpack bijectors from metatdata."""
-        bijectors = []
+        bijectors_ = []
 
-        for field_ in fields(cls):
-            name = field_.name
-            
+        for field_ in fields(obj):
             try:
-                value = cls.__dict__[name]
+                value_ = obj.__dict__[field_.name]
             except KeyError:
                 continue
 
             if not field_.metadata.get("static", False):
 
                 if field_.metadata.get("transform", None) is not None:
-                    trans = field_.metadata["transform"]
-                    bijectors.append(trans)
+                    bijectors_.append(field_.metadata["transform"])
 
-                elif isinstance(value, Module):
-                    for value_ in _unpack_bijectors_from_meta(value):
-                        bijectors.append(value_)
+                elif isinstance(value_, Module):
+                    for value__ in _unpack_bijectors_from_meta(value_):
+                        bijectors_.append(value__)
 
                 else:
-                    bijectors.append(value)
+                    bijectors_.append(value_)
             
-        return bijectors
+        return bijectors_
     
-    return treedef.unflatten(_unpack_bijectors_from_meta(obj))
+    bijectors_ = _unpack_bijectors_from_meta(obj)
+    
+    return treedef.unflatten(bijectors_)
 
 
 
@@ -94,7 +90,7 @@ def param(transform: Bijector):
     """Set leaf node metadata for a parameter.
 
     Args:
-        transform: A bijector to apply to the parameter.
+        transform (Bijector): A default bijector transformation for the parameter.
 
     Returns:
         A field with the metadata set.
@@ -102,55 +98,51 @@ def param(transform: Bijector):
     return field(metadata={"transform": transform})
 
 
-def constrain(obj: Module) -> Module:
+def constrain(obj: Module, bij: Module) -> Module:
     """
     Transform model parameters to the constrained space for corresponding
     bijectors.
 
     Args:
-        obj (Module): The Base that is to be transformed.
+        obj (Module): The PyTree object whoose leaves are to be transformed.
+        bij (Module): The PyTree object whoose leaves are the corresponding bijector transformations.
 
     Returns:
-        Base: A transformed parameter set. The dictionary is equal in
-            structure to the input params dictionary.
+        Module: PyTree tranformed to the constrained space.
     """
-    return jtu.tree_map(lambda p, t: t.forward(p), obj, obj.bijectors)
+    return jtu.tree_map(lambda leaf, transform: transform.forward(leaf), obj, bij)
 
 
-def unconstrain(obj: Module) -> Module:
+def unconstrain(obj: Module, bij: Module) -> Module:
     """
     Transform model parameters to the unconstrained space for corresponding
     bijectors.
 
     Args:
-        obj (Module): The Base that is to be transformed.
+        obj (Module): The PyTree object whoose leaves are to be transformed.
+        bij (Module): The PyTree object whoose leaves are the corresponding bijector transformations.
 
     Returns:
-        Base: A transformed parameter set. The dictionary is equal in
-            structure to the input params dictionary.
+        Module: PyTree tranformed to the unconstrained space.
     """
-    return jtu.tree_map(lambda p, t: t.inverse(p), obj, obj.bijectors)
+    return jtu.tree_map(lambda leaf, transform: transform.inverse(leaf), obj, bij)
 
 
-def stop_gradients(obj: Module) -> Module:
+def stop_gradients(obj: Module, trn: Module) -> Module:
     """
     Stop the gradients flowing through parameters whose trainable status is
     False.
     Args:
-        params (Dict): The parameter set for which trainable statuses should
-            be derived from.
-        trainables (Dict): A dictionary of boolean trainability statuses. The
-            dictionary is equal in structure to the input params dictionary.
+        obj (Module): PyTree object to stop gradients for.
+        trn (Module): PyTree of booleans indicating whether to stop gradients for each leaf node.
     Returns:
-        Dict: A dictionary parameters. The dictionary is equal in structure to
-            the input params dictionary.
+        Module: PyTree with gradients stopped.
     """
 
-    def _stop_grad(p, t):
-        return lax.cond(t, lambda x: x, lax.stop_gradient, p)
+    def _stop_grad(leaf: jax.Array, trainable: bool) -> jax.Array:
+        return lax.cond(trainable, lambda x: x, lax.stop_gradient, leaf)
 
-
-    return jtu.tree_map(lambda p, t: _stop_grad(p, t), obj, obj.trainables)
+    return jtu.tree_map(lambda *_: _stop_grad(*_), obj, trn)
 
 
 __all__ = [

@@ -15,7 +15,7 @@
 
 import jax.numpy as jnp
 import pytest
-from jaxutils.module import Module, param, constrain, unconstrain, stop_gradients
+from jaxutils.module import Module, param, constrain, unconstrain, stop_gradients, default_bijectors, default_trainables
 from jaxutils.bijectors import Bijector, Identity, Softplus
 import jax.tree_util as jtu
 import jax
@@ -42,19 +42,23 @@ def test_module():
     assert tree.param_b == 5.0
 
 
-    bijector_list = jtu.tree_leaves(tree.bijectors)
+    # Test default bijectors
+    bijectors = default_bijectors(tree)
+    bijector_list = jtu.tree_leaves(bijectors)
 
     for b1, b2 in zip(bijector_list, [Identity, Identity, Softplus, Softplus, Softplus]):
         assert b1 == b2
 
-    trainable_list = jtu.tree_leaves(tree.trainables)
+    # Test default trainables
+    trainables = default_trainables(tree)
+    trainable_list = jtu.tree_leaves(trainables)
 
     for t1, t2 in zip(trainable_list, [True, True, True, True, True]):
         assert t1 == t2
 
     # Test constrain and unconstrain
-    constrained = constrain(tree)
-    unconstrained = unconstrain(tree)
+    constrained = constrain(tree, bijectors)
+    unconstrained = unconstrain(tree, bijectors)
     
     leafs = jtu.tree_leaves(tree)
 
@@ -66,20 +70,18 @@ def test_module():
 
 
     _, tree_def = jax.tree_flatten(tree)
-    tree = tree.set_trainables(tree_def.unflatten([True, False, True, False, False]))
+    trainables = tree_def.unflatten([True, False, True, False, False])
 
 
     # Test stop gradients
     def loss(tree):
-        tree = stop_gradients(tree)
+        tree = stop_gradients(tree, trainables)
         return jnp.sum(tree.param_a**2 + tree.sub_tree.param_c**2 + tree.sub_tree.param_d**2 + tree.sub_tree.param_e**2 + tree.param_b**2)
 
     g = jax.grad(loss)(tree)
 
     assert g.param_a == 2.0
-    assert g.sub_tree.param_c == 4.0
+    assert g.sub_tree.param_c == 0.0
     assert g.sub_tree.param_d == 6.0
-    assert g.sub_tree.param_e == 8.0
-    assert g.param_b == 10.0
-
-
+    assert g.sub_tree.param_e == 0.0
+    assert g.param_b == 0.0
