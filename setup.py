@@ -43,6 +43,7 @@ REQUIRES = ["jax>=0.4.0",
             "jaxtyping", 
             "ml-collections==0.1.0",
             "equinox"
+            "optax",
             ]
 
 EXTRAS = {
