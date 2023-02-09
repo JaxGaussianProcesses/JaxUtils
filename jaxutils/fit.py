@@ -29,8 +29,6 @@ from .dataset import Dataset
 from .objective import Objective
 from .progress_bar import progress_bar_scan
 
-import equinox as eqx
-
 
 def fit(
     *,
@@ -43,8 +41,8 @@ def fit(
     key: Optional[KeyArray] = jr.PRNGKey(42),
     log_rate: Optional[int] = 10,
     verbose: Optional[bool] = True,
-    bijectors: Any,
-    trainables: Any,
+    bijectors: Module = None,
+    trainables: Module = None,
 ) -> Tuple[Module, Array]:
     """Abstracted method for fitting a GP model with respect to a supplied objective function.
     Optimisers used here should originate from Optax.
@@ -64,10 +62,7 @@ def fit(
     Returns:
         Tuple[Module, Array]: A Tuple comprising the optimised model and training history respectively.
     """
-
-    _check_types(model, objective, train_data, optim, num_iters, log_rate, verbose, key, batch_size)
-    #TODO: Check bijectors and trainables are correct types and same structure as model.
-
+    
     # Initialise bijectors from defaults if not supplied.
     if bijectors is None:
         bijectors = default_bijectors(model)
@@ -75,6 +70,20 @@ def fit(
     # Initialise trainables from defaults if not supplied.
     if trainables is None:
         trainables = default_trainables(model)
+
+    # Check inputs.
+    _check_model(model)
+    _check_objective(objective)
+    _check_train_data(train_data)
+    _check_optim(optim)
+    _check_num_iters(num_iters)
+    _check_batch_size(batch_size)
+    _check_key(key)
+    _check_log_rate(log_rate)
+    _check_verbose(verbose)
+    _check_bijectors(bijectors)
+    _check_trainables(trainables)
+    
 
     # Unconstrained space loss function with stop-gradient rule for non-trainable params.
     def loss(model: Module, batch: Dataset) -> Float[Array, "1"]:
@@ -92,16 +101,15 @@ def fit(
     iter_keys = jr.split(key, num_iters)
     iter_nums = jnp.arange(num_iters)
 
-    # Optimisation step
+    # Optimisation step.
     def step(carry, iter_num__and__key):
-        iter_num, key = iter_num__and__key
+        _, key = iter_num__and__key
         model, opt_state = carry
-
-        if batch_size == -1:
-            batch = train_data
 
         if batch_size != -1:
             batch = get_batch(train_data, batch_size, key)
+        else:
+            batch = train_data
 
         loss_val, loss_gradient = jax.value_and_grad(loss)(model, batch)
         updates, opt_state = optim.update(loss_gradient, opt_state, model)
@@ -143,58 +151,59 @@ def get_batch(train_data: Dataset, batch_size: int, key: KeyArray) -> Dataset:
 
 
 
-def _check_types(
-    model: Any, 
-    objective: Any, 
-    train_data: Any, 
-    optax_optim: Any,
-    num_iters: Any,
-    log_rate: Any,
-    verbose: Any,
-    key: Any,
-    batch_size: Any,
-    ) -> None:
-
+def _check_model(model: Any) -> None:
+    """Check that the model is of type Module."""
     if not isinstance(model, Module):
         raise TypeError("model must be of type jaxutils.Module")
-    
+
+def _check_objective(objective: Any) -> None:
+    """Check that the objective is of type Objective."""
     if not isinstance(objective, Objective):
         raise TypeError("objective must be of type jaxutils.Objective")
-    
+
+def _check_train_data(train_data: Any) -> None:
+    """Check that the train_data is of type Dataset."""
     if not isinstance(train_data, Dataset):
         raise TypeError("train_data must be of type jaxutils.Dataset")
 
-    if not isinstance(optax_optim, ox.GradientTransformation):
+def _check_optim(optim: Any) -> None:
+    if not isinstance(optim, ox.GradientTransformation):
         raise TypeError("optax_optim must be of type optax.GradientTransformation")
 
+def _check_num_iters(num_iters: Any) -> None:
     if not isinstance(num_iters, int):
         raise TypeError("num_iters must be of type int")
 
     if not num_iters >  0:
-        raise ValueError("num_iters must be positive, but got num_iters={num_iters}")
-
+        raise ValueError("num_iters must be positive")
+    
+def _check_log_rate(log_rate: Any) -> None:
     if not isinstance(log_rate, int):
-        raise TypeError(f"log_rate must be of type int")
-
+        raise TypeError("log_rate must be of type int")
+    
     if not log_rate >  0:
-        raise ValueError(f"log_rate must be positive, but got log_rate={log_rate}")
+        raise ValueError("log_rate must be positive")
 
+def _check_verbose(verbose: Any) -> None:
     if not isinstance(verbose, bool):
         raise TypeError("verbose must be of type bool")
+
+def _check_key(key: Any) -> None:
+    pass
+
+def _check_batch_size(batch_size: Any) -> None:
+    if not isinstance(batch_size, int):
+        raise TypeError("batch_size must be of type int")
     
-    if batch_size is not None:
-        if not isinstance(batch_size, int):
-            raise TypeError("batch_size must be of type int")
-
+    if not batch_size == -1:
         if not batch_size >  0:
-            if batch_size == -1:
-                pass
-            else:
-                raise ValueError(f"batch_size must be positive, but got batch_size={batch_size}")
-        
-        if not batch_size < train_data.n:
-            raise ValueError(f"batch_size must be less than train_data.n, but got batch_size={batch_size} and train_data.n={train_data.n}")
+            raise ValueError("batch_size must be positive")
 
+def _check_bijectors(bijectors: Any) -> None:
+    pass
+
+def _check_trainables(trainables: Any) -> None:
+    pass
 
 __all__ = [
     "fit",
