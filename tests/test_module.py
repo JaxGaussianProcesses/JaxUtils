@@ -14,11 +14,11 @@
 # ==============================================================================
 
 import jax.numpy as jnp
-import pytest
-from jaxutils.module import Module, param, constrain, unconstrain, stop_gradients, default_bijectors, default_trainables
+from jaxutils.module import Module, param, constrain, unconstrain, stop_gradients
 from jaxutils.bijectors import Identity, Softplus
 import jax.tree_util as jtu
 import jax
+
 
 def test_module():
 
@@ -33,7 +33,11 @@ def test_module():
         sub_tree: SubTree
         param_b: float = param(Softplus)
 
-    tree = Tree(param_a=1.0, sub_tree=SubTree(param_c=2.0, param_d=3.0, param_e=4.0), param_b=5.0)
+    tree = Tree(
+        param_a=1.0,
+        sub_tree=SubTree(param_c=2.0, param_d=3.0, param_e=4.0),
+        param_b=5.0,
+    )
 
     assert tree.param_a == 1.0
     assert tree.sub_tree.param_c == 2.0
@@ -41,16 +45,17 @@ def test_module():
     assert tree.sub_tree.param_e == 4.0
     assert tree.param_b == 5.0
 
-
     # Test default bijectors
-    bijectors = default_bijectors(tree)
+    bijectors = tree.bijectors
     bijector_list = jtu.tree_leaves(bijectors)
 
-    for b1, b2 in zip(bijector_list, [Identity, Identity, Softplus, Softplus, Softplus]):
+    for b1, b2 in zip(
+        bijector_list, [Identity, Identity, Softplus, Softplus, Softplus]
+    ):
         assert b1 == b2
 
     # Test default trainables
-    trainables = default_trainables(tree)
+    trainables = tree.trainables
     trainable_list = jtu.tree_leaves(trainables)
 
     for t1, t2 in zip(trainable_list, [True, True, True, True, True]):
@@ -59,26 +64,38 @@ def test_module():
     # Test constrain and unconstrain
     constrained = constrain(tree)
     unconstrained = unconstrain(tree)
-    
+
     leafs = jtu.tree_leaves(tree)
 
-    for l1, l2, bij in zip(leafs, jtu.tree_leaves(constrained), [Identity, Identity, Softplus, Softplus, Softplus]):
+    for l1, l2, bij in zip(
+        leafs,
+        jtu.tree_leaves(constrained),
+        [Identity, Identity, Softplus, Softplus, Softplus],
+    ):
         assert bij.forward(l1) == l2
 
-    for l1, l2, bij in zip(leafs, jtu.tree_leaves(unconstrained), [Identity, Identity, Softplus, Softplus, Softplus]):
+    for l1, l2, bij in zip(
+        leafs,
+        jtu.tree_leaves(unconstrained),
+        [Identity, Identity, Softplus, Softplus, Softplus],
+    ):
         assert bij.inverse(l1) == l2
-
 
     _, tree_def = jax.tree_flatten(tree)
     trainables = tree_def.unflatten([True, False, True, False, False])
 
     new_tree = tree.set_trainables(trainables)
 
-
     # Test stop gradients
     def loss(tree):
         tree = stop_gradients(tree)
-        return jnp.sum(tree.param_a**2 + tree.sub_tree.param_c**2 + tree.sub_tree.param_d**2 + tree.sub_tree.param_e**2 + tree.param_b**2)
+        return jnp.sum(
+            tree.param_a**2
+            + tree.sub_tree.param_c**2
+            + tree.sub_tree.param_d**2
+            + tree.sub_tree.param_e**2
+            + tree.param_b**2
+        )
 
     g = jax.grad(loss)(new_tree)
 

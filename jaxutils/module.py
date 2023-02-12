@@ -27,7 +27,7 @@ import equinox as eqx
 from .bijectors import Bijector
 
 
-def default_trainables(obj: Module) -> Module:
+def _default_trainables(obj: Module) -> Module:
     """
     Construct trainable statuses for each parameter. By default,
     every parameter within the model is trainable.
@@ -35,10 +35,38 @@ def default_trainables(obj: Module) -> Module:
     Returns:
         Module: A Module of boolean trainability statuses.
     """
-    return jtu.tree_map(lambda _: True, obj)
+    tree_def_ = jtu.tree_structure(obj)
+
+    def _unpack_trainables_from_meta(obj: Module) -> List[bool]:
+        """Unpack trainables from metatdata."""
+        trainables_ = []
+
+        for field_ in fields(obj):
+            try:
+                value_ = obj.__dict__[field_.name]
+            except KeyError:
+                continue
+
+            if not field_.metadata.get("static", False):
+
+                if field_.metadata.get("transform", None) is not None:
+                    trainables_.append(field_.metadata["trainable"])
+
+                elif isinstance(value_, Module):
+                    for value__ in _unpack_trainables_from_meta(value_):
+                        trainables_.append(value__)
+
+                else:
+                    trainables_.append(value_)
+
+        return trainables_
+
+    trainables_ = _unpack_trainables_from_meta(obj)
+
+    return tree_def_.unflatten(trainables_)
 
 
-def default_bijectors(obj: Module) -> Module:
+def _default_bijectors(obj: Module) -> Module:
     """Given a Module object, return an equinox Module of bijectors comprising the same structure.
 
     Args:
@@ -79,7 +107,7 @@ def default_bijectors(obj: Module) -> Module:
     return tree_def_.unflatten(bijectors_)
 
 
-def param(transform: Bijector, **kwargs: Any):
+def param(transform: Bijector, trainable: bool = True, **kwargs: Any):
     """Used for marking default parameter transformations.
 
     !!! example
@@ -104,6 +132,10 @@ def param(transform: Bijector, **kwargs: Any):
     if "transform" in metadata:
         raise ValueError("Cannot use metadata with `transform` already set.")
     metadata["transform"] = transform
+    if "trainable" in metadata:
+        raise ValueError("Cannot use metadata with `trainable` already set.")
+    metadata["trainable"] = trainable
+
     return field(**kwargs)
 
 
@@ -171,8 +203,8 @@ class Module(eqx.Module):
 
     def __new__(
         cls,
-        __trainables_func__: Callable[[Module], Module] = default_trainables,
-        __bijectors_func__: Callable[[Module], Module] = default_bijectors,
+        __trainables_func__: Callable[[Module], Module] = _default_trainables,
+        __bijectors_func__: Callable[[Module], Module] = _default_bijectors,
         *args: Any,
         **kwargs: Any,
     ) -> Module:
@@ -354,7 +386,7 @@ class Module(eqx.Module):
 __all__ = [
     "Module",
     "param",
-    "default_trainables" "default_bijectors" "constrain",
+    "constrain",
     "unconstrain",
     "stop_gradients",
 ]
