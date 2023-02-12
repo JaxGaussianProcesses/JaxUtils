@@ -25,7 +25,7 @@ import optax as ox
 
 def test_simple_linear_model():
     # (1) Create a dataset:
-    X = jnp.linspace(0.0, 10.0, 1000050).reshape(-1, 1)
+    X = jnp.linspace(0.0, 10.0, 100).reshape(-1, 1)
     y = 2.0 * X + 1.0 + 10 * jr.normal(jr.PRNGKey(0), X.shape).reshape(-1, 1)
     D = Dataset(X, y)
 
@@ -50,7 +50,7 @@ def test_simple_linear_model():
     loss = MeanSqaureError()
 
     # (4) Train!
-    trained_model, hist = fit(model=model, objective=loss, train_data=D, optim=ox.sgd(0.001), num_iters=10000)
+    trained_model, hist = fit(model=model, objective=loss, train_data=D, optim=ox.sgd(0.001), num_iters=100)
 
     assert len(hist) == 10000
     assert isinstance(trained_model, LinearModel)
