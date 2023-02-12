@@ -28,6 +28,7 @@ from typing import Any
 
 from .module import Module, constrain, unconstrain, stop_gradients
 from .dataset import Dataset
+from .bijectors import Bijector
 from .objective import Objective
 from .progress_bar import progress_bar_scan
 
@@ -140,17 +141,16 @@ def _check_model(model: Any) -> None:
     if not isinstance(model, Module):
         raise TypeError("model must be of type jaxutils.Module")
 
-    uncstr_ = unconstrain(model)
-    cstr_ = constrain(uncstr_)
-
     if not jtu.tree_structure(model) == jtu.tree_structure(model.trainables):
         raise TypeError("trainables should have same tree structure as model")
 
-    if not jtu.tree_structure(model) == jtu.tree_structure(uncstr_):
-        raise TypeError("bijectors should have same tree structure as model")
+    def _is_bij(x):
+        return isinstance(x, Bijector)
 
-    if not jtu.tree_structure(model) == jtu.tree_structure(cstr_):
-        raise TypeError("bijectors should have same tree structure as model")
+    if not jtu.tree_structure(
+        jtu.tree_map(lambda _: True, model.bijectors, is_leaf=_is_bij)
+    ) == jtu.tree_structure(model):
+        raise ValueError("bijectors tree must have the same structure as the Module.")
 
 
 def _check_objective(objective: Any) -> None:

@@ -245,6 +245,16 @@ class Module(eqx.Module):
         if not isinstance(tree, Module):
             raise TypeError("tree must be a JaxUtils Module.")
 
+        def _is_bij(x):
+            return isinstance(x, Bijector)
+
+        if not jtu.tree_structure(
+            jtu.tree_map(lambda _: True, tree, is_leaf=_is_bij)
+        ) == jtu.tree_structure(self):
+            raise ValueError(
+                "bijectors tree must have the same structure as the Module."
+            )
+
         return self.__set_bijectors_func__(
             lambda obj: jtu.tree_structure(obj).unflatten(jtu.tree_leaves(tree))
         )
