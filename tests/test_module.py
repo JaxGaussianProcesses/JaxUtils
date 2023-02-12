@@ -81,7 +81,7 @@ def test_module():
     ):
         assert bij.inverse(l1) == l2
 
-    _, tree_def = jax.tree_flatten(tree)
+    _, tree_def = jtu.tree_flatten(tree)
     trainables = tree_def.unflatten([True, False, True, False, False])
 
     new_tree = tree.set_trainables(trainables)

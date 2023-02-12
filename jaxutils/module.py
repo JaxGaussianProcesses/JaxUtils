@@ -20,11 +20,16 @@ import jax
 from jax import lax
 
 from dataclasses import fields, field
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, NamedTuple
+from collections import namedtuple
 
 import equinox as eqx
 
 from .bijectors import Bijector
+
+
+"""NamedTuple for storing metadata (i.e., trainables and bijectors). """
+_Meta = namedtuple("_Meta", ["trainables", "bijectors"])
 
 
 class _cached_static_property:
@@ -131,6 +136,43 @@ def stop_gradients(obj: Module) -> Module:
     return jtu.tree_map(lambda *_: _stop_grad(*_), obj, obj.trainables)
 
 
+def _unpack_meta(obj: Module) -> NamedTuple:
+    """Unpack metadata (i.e., trainables and bijectors) defined by the `param` field.
+
+    Args:
+        obj (Module): The PyTree object whoose leaves are to be transformed.
+
+    Returns:
+        NamedTuple: A namedtuple with fields `trainables` and `bijectors`.
+
+    Raises:
+        ValueError: If a leaf is not marked as a parameter and its type is not a subclass of `Module`.
+    """
+    trainables, bijectors = [], []
+
+    for field_ in fields(obj):
+
+        if field_.metadata.get("static", False):
+            continue
+
+        if field_.metadata.get("param", False):
+            trainables.append(field_.metadata["trainable"])
+            bijectors.append(field_.metadata["transform"])
+            continue
+
+        if issubclass(field_.type, Module):
+            for trainable, bijector in zip(*_unpack_meta(field_.type)):
+                trainables.append(trainable)
+                bijectors.append(bijector)
+            continue
+
+        raise ValueError(
+            f"Field `{field_.name}` must either be: \n- marked as a parameter via by the `param` field\n- marked as static via the `static` field metadata\n- a jaxutils.Module."
+        )
+
+    return _Meta(trainables, bijectors)
+
+
 class Module(eqx.Module):
     """Base Module object.
 
@@ -149,88 +191,43 @@ class Module(eqx.Module):
 
     def __new__(
         cls,
-        __trainables_leaves__: List[bool] = None,
-        __bijectors_leaves__: List[Bijector] = None,
-        __unpack_meta__: bool = True,
+        __meta__: _Meta = None,
         *args: Any,
         **kwargs: Any,
     ) -> Module:
-        """This is used to set the trainables and bijectors functions. As we are working with frozen dataclasses.
+        """This method is defined to set the `__meta__` attribute (as we are working with frozen dataclasses!).
 
         Args:
-            __trainables_func__ (Callable[[Module], Module]). The function that constructs the trainables PyTree from `self`.
-            __bijectors_func__ (Callable[[Module], Module]). The function that constructs the bijectors PyTree from `self`.
-            __unpack_meta__ (bool). Whether to unpack the metadata from the `param` field.
+            __meta__ (_Meta.) Metadata that define the models' trainables and bijectors PyTree leaves.
             *args (Any). Arguments.
             **kwargs (Any). Keyword arguments.
 
         Returns:
             Module. An instance of the JaxUtils Module class.
         """
-
         obj = super().__new__(cls)
-
-        def _unpack_meta(obj: Module) -> Tuple[List[bool], List[Bijector]]:
-            """Unpack trainables from metadata defined by the `param` field.
-
-            If a leaf is not marked as a parameter then this will raise an error.
-            """
-            train_meta_ = []
-            bij_meta_ = []
-
-            for field_ in fields(obj):
-
-                if field_.metadata.get("static", False):
-                    continue
-
-                if field_.metadata.get("param", False):
-                    train_meta_.append(field_.metadata["trainable"])
-                    bij_meta_.append(field_.metadata["transform"])
-                    continue
-
-                if issubclass(field_.type, Module):
-                    for trainable_, bijector_ in zip(*_unpack_meta(field_.type)):
-                        train_meta_.append(trainable_)
-                        bij_meta_.append(bijector_)
-                    continue
-
-                raise ValueError(
-                    f"Field `{field_.name}` must either be: \n- marked as a parameter via by the `param` field\n- marked as static via the `static` field metadata\n- a jaxutils.Module."
-                )
-
-            return train_meta_, bij_meta_
-
-        if __unpack_meta__:
-            train_meta_, bij_meta_ = _unpack_meta(obj)
-
-        if __trainables_leaves__ is None:
-            __trainables_leaves__ = train_meta_
-
-        if __bijectors_leaves__ is None:
-            __bijectors_leaves__ = bij_meta_
-
-        object.__setattr__(obj, "__trainables_leaves__", __trainables_leaves__)
-        object.__setattr__(obj, "__bijectors_leaves__", __bijectors_leaves__)
-
+        if __meta__ is None:
+            __meta__ = _unpack_meta(obj)
+        object.__setattr__(obj, "__meta__", __meta__)
         return obj
 
-    @_cached_static_property  # Cacheing is fine here as the trainables are static and `Module` is frozen/inmutable.
+    @_cached_static_property  # Caching fine here since `trainables` are static and `Module` is frozen/inmutable.
     def trainables(self) -> Module:
-        """Return the boolean Module comprising trainability statuses.
+        """Return boolean Module comprising trainability statuses for the Module.
 
         Returns:
-            Module: The boolean Module comprising trainability statuses for the Module.
+            Module: Boolean Module comprising trainability statuses for the Module.
         """
-        return jtu.tree_structure(self).unflatten(self.__trainables_leaves__)
+        return jtu.tree_structure(self).unflatten(self.__meta__.trainables)
 
-    @_cached_static_property  # Cacheing is fine here as the trainables are static and `Module` is frozen/inmutable.
+    @_cached_static_property  # Caching fine here since bijectors are static and `Module` is frozen/inmutable.
     def bijectors(self) -> Module:
         """Return the Bijector Module comprising transformations for parameters to and from the constrained and unconstrained spaces.
 
         Returns:
-            Module: The Bijector Module of parameter transformations.
+            Module: The Bijector Module of parameter transformations for the Module.
         """
-        return jtu.tree_structure(self).unflatten(self.__bijectors_leaves__)
+        return jtu.tree_structure(self).unflatten(self.__meta__.bijectors)
 
     def set_trainables(self, tree: Module) -> Module:
         """Set parameter trainability status for the Module.
@@ -248,80 +245,53 @@ class Module(eqx.Module):
         if not jtu.tree_structure(tree) == jtu.tree_structure(self):
             raise ValueError("Tree must have the same structure as the Module.")
 
-        return self.__set_trainables_leaves__(jtu.tree_leaves(tree))
+        return self.__update_meta__(
+            trainables=jtu.tree_leaves(tree), bijectors=self.__meta__.bijectors
+        )
 
     def set_bijectors(self, tree: Module) -> Module:
         """Set parameter transformations for the Module.
 
         Args:
-            tree (Module): The Bijector tree of parameter transformations comprising the same tree structure as the underlying Module.
+            tree (Module): The bijector tree of parameter transformations comprising the same tree structure as the underlying Module.
 
         Returns:
             Module: A new instance with the updated trainablility status tree.
         """
-
         if not isinstance(tree, Module):
             raise TypeError("tree must be a JaxUtils Module.")
 
-        def _is_bij(x):
-            return isinstance(x, Bijector)
-
         if not jtu.tree_structure(
-            jtu.tree_map(lambda _: True, tree, is_leaf=_is_bij)
+            jtu.tree_map(
+                lambda _: True, tree, is_leaf=lambda x: isinstance(x, Bijector)
+            )
         ) == jtu.tree_structure(self):
             raise ValueError(
                 "bijectors tree must have the same structure as the Module."
             )
 
-        return self.__set_bijectors_leaves__(jtu.tree_leaves(tree))
-
-    def __set_trainables_leaves__(self, __trainables_leaves__: List[bool]) -> Module:
-        """Set the trainables function for the class."""
-
-        # Create new class instance, with the adjusted trainable function.
-        new_instance = self.__class__.__new__(
-            cls=self.__class__,
-            __trainables_leaves__=__trainables_leaves__,
-            __bijectors_leaves__=self.__bijectors_leaves__,
-            __unpack_meta__=False,
+        return self.__update_meta__(
+            trainables=self.__meta__.trainables, bijectors=jtu.tree_leaves(tree)
         )
 
-        # TODO: Might have to filter attribute dict here?
-        for field_ in fields(self):
-            object.__setattr__(new_instance, field_.name, self.__dict__[field_.name])
-
-        return new_instance
-
-    def __set_bijectors_leaves__(
-        self, __bijectors_leaves__: Callable[[Module], Module]
-    ) -> Module:
-        """Set the bijectors function for the class."""
-
-        # Create new class instance, with the adjusted trainable function.
-        new_instance = self.__class__.__new__(
-            self.__class__,
-            __trainables_leaves__=self.__trainables_leaves__,
-            __bijectors_leaves__=__bijectors_leaves__,
-            __unpack_meta__=False,
+    def __update_meta__(self, trainables, bijectors) -> Module:
+        """Update Module meta through a new instance."""
+        new = self.__class__.__new__(
+            cls=self.__class__, __meta__=_Meta(trainables, bijectors)
         )
 
-        # TODO: Might have to filter attribute dict here?
         for field_ in fields(self):
-            object.__setattr__(new_instance, field_.name, self.__dict__[field_.name])
+            object.__setattr__(new, field_.name, self.__dict__[field_.name])
 
-        return new_instance
+        return new
 
     def tree_flatten(self):
-        """Same as Equinox, except for the addition of the `static_meta`."""
+        """Identical to that of Equinox, except for the addition of the `meta` component."""
         dynamic_field_names = []
         dynamic_field_values = []
         static_field_names = []
         static_field_values = []
-
-        static_meta = [
-            self.__trainables_leaves__,
-            self.__bijectors_leaves__,
-        ]
+        meta = [self.__meta__.trainables, self.__meta__.bijectors]
 
         for field_ in fields(self):
             name = field_.name
@@ -340,27 +310,18 @@ class Module(eqx.Module):
             tuple(dynamic_field_names),
             tuple(static_field_names),
             tuple(static_field_values),
-            tuple(static_meta),
+            tuple(meta),
         )
 
     @classmethod
     def tree_unflatten(cls, aux, dynamic_field_values):
-        """Same as Equinox, except for the addition of the `static_meta`."""
+        """Identical to that of Equinox, except for the addition of the `meta` component."""
 
-        dynamic_field_names, static_field_names, static_field_values, static_meta = aux
+        dynamic_field_names, static_field_names, static_field_values, meta = aux
 
-        # These are the static functions that determine the trainable and bijector PyTree's from self.
-        __trainables_leaves__, __bijectors_leaves__ = static_meta
-
-        self = cls.__new__(
-            cls=cls,
-            __trainables_leaves__=__trainables_leaves__,
-            __bijectors_leaves__=__bijectors_leaves__,
-        )
-
+        self = cls.__new__(cls=cls, __meta__=_Meta(*meta))
         for name, value in zip(dynamic_field_names, dynamic_field_values):
             object.__setattr__(self, name, value)
-
         for name, value in zip(static_field_names, static_field_values):
             object.__setattr__(self, name, value)
 
