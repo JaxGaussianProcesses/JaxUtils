@@ -27,7 +27,6 @@ import equinox as eqx
 
 from .bijectors import Bijector
 
-
 """NamedTuple for storing metadata (i.e., trainables and bijectors). """
 _Meta = namedtuple("_Meta", ["trainables", "bijectors"])
 
@@ -83,6 +82,36 @@ def param(transform: Bijector, trainable: bool = True, **kwargs: Any):
         raise ValueError("Cannot use metadata with `param` already set.")
     metadata["param"] = True
 
+    return field(**kwargs)
+
+
+def static(**kwargs: Any):
+    """Alias of `equinox.static_field`. Provided for convenience.
+
+    Used for marking that a field should _not_ be treated as a leaf of the PyTree
+    of a `jaxutils.Module`/ `equinox.Module`. (And is instead treated as part of the structure, i.e.
+    as extra metadata.)
+    !!! example
+        ```python
+        class MyModule(jaxutils.Module):
+            normal_field: int
+            static_field: int = equinox.static_field()
+        mymodule = MyModule("normal", "static")
+        leaves, treedef = jtu.tree_flatten(mymodule)
+        assert leaves == ["normal"]
+        assert "static" in str(treedef)
+        ```
+    Args:
+     **kwargs (Any): If any are passed then they are passed on to `datacalss.field`.
+        (Recall that JaxUtils uses dataclasses for its modules, based on Equinox's infrastructure.)
+    """
+    try:
+        metadata = dict(kwargs["metadata"])
+    except KeyError:
+        metadata = kwargs["metadata"] = {}
+    if "static" in metadata:
+        raise ValueError("Cannot use metadata with `static` already set.")
+    metadata["static"] = True
     return field(**kwargs)
 
 
@@ -331,6 +360,7 @@ class Module(eqx.Module):
 __all__ = [
     "Module",
     "param",
+    "static",
     "constrain",
     "unconstrain",
     "stop_gradients",
