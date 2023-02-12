@@ -234,13 +234,15 @@ class Module(eqx.Module):
             lambda obj: obj.tree_def.unflatten(tree.leaves)
         )
 
-    def __set_trainables_func__(self, func: Callable[[Module], Module]) -> Module:
+    def __set_trainables_func__(
+        self, __trainables_func__: Callable[[Module], Module]
+    ) -> Module:
         """Set the trainables function for the class."""
 
         # Create new class instance, with the adjusted trainable function.
         new_instance = self.__class__.__new__(
             self.__class__,
-            trainables_func=func,
+            trainables_func=__trainables_func__,
             bijectors_func=self.__bijectors_func__,
         )
 
@@ -250,14 +252,16 @@ class Module(eqx.Module):
 
         return new_instance
 
-    def __set_bijectors_func__(self, func: Callable[[Module], Module]) -> Module:
+    def __set_bijectors_func__(
+        self, __bijectors_func__: Callable[[Module], Module]
+    ) -> Module:
         """Set the bijectors function for the class."""
 
         # Create new class instance, with the adjusted trainable function.
         new_instance = self.__class__.__new__(
             self.__class__,
             trainables_func=self.__trainables_func__,
-            bijectors_func=func,
+            bijectors_func=__bijectors_func__,
         )
 
         # TODO: Might have to filter attribute dict here?
