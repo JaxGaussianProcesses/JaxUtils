@@ -20,7 +20,7 @@ import jax
 from jax import lax
 
 from dataclasses import fields, field
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Tuple
 
 import equinox as eqx
 
@@ -44,87 +44,6 @@ class _cached_static_property:
         attr = self.func(instance)
         object.__setattr__(instance, self.name, attr)
         return attr
-
-
-def _default_trainables(obj: Module) -> Module:
-    """
-    Construct trainable statuses for each parameter. By default,
-    every parameter within the model is trainable.
-
-    Returns:
-        Module: A Module of boolean trainability statuses.
-    """
-    tree_def_ = jtu.tree_structure(obj)
-
-    def _unpack_trainables_from_meta(obj: Module) -> List[bool]:
-        """Unpack trainables from metatdata defined by the `param` field."""
-        trainables_ = []
-
-        for field_ in fields(obj):
-            try:
-                value_ = obj.__dict__[field_.name]
-            except KeyError:
-                continue
-
-            if not field_.metadata.get("static", False):
-
-                if field_.metadata.get("transform", None) is not None:
-                    trainables_.append(field_.metadata["trainable"])
-
-                elif isinstance(value_, Module):
-                    for value__ in _unpack_trainables_from_meta(value_):
-                        trainables_.append(value__)
-
-                else:
-                    trainables_.append(value_)
-
-        return trainables_
-
-    trainables_ = _unpack_trainables_from_meta(obj)
-
-    return tree_def_.unflatten(trainables_)
-
-
-def _default_bijectors(obj: Module) -> Module:
-    """Given a Module object, return an equinox Module of bijectors comprising the same structure.
-
-    Args:
-        obj (Module): The PyTree object whoose default bijectors (from the param field) you would to obtain.
-
-    Returns:
-        Module: A PyTree of bijectors comprising the same structure as `obj`.
-    """
-
-    tree_def_ = jtu.tree_structure(obj)
-
-    def _unpack_bijectors_from_meta(obj: Module) -> List[Bijector]:
-        """Unpack bijectors from metatdata defined by the `param` field."""
-
-        bijectors_ = []
-
-        for field_ in fields(obj):
-            try:
-                value_ = obj.__dict__[field_.name]
-            except KeyError:
-                continue
-
-            if not field_.metadata.get("static", False):
-
-                if field_.metadata.get("transform", None) is not None:
-                    bijectors_.append(field_.metadata["transform"])
-
-                elif isinstance(value_, Module):
-                    for value__ in _unpack_bijectors_from_meta(value_):
-                        bijectors_.append(value__)
-
-                else:
-                    bijectors_.append(value_)
-
-        return bijectors_
-
-    bijectors_ = _unpack_bijectors_from_meta(obj)
-
-    return tree_def_.unflatten(bijectors_)
 
 
 def param(transform: Bijector, trainable: bool = True, **kwargs: Any):
@@ -155,9 +74,9 @@ def param(transform: Bijector, trainable: bool = True, **kwargs: Any):
     if "trainable" in metadata:
         raise ValueError("Cannot use metadata with `trainable` already set.")
     metadata["trainable"] = trainable
-    if "is_param" in metadata:
-        raise ValueError("Cannot use metadata with `is_param` already set.")
-    metadata["__is_param__"] = True
+    if "param" in metadata:
+        raise ValueError("Cannot use metadata with `param` already set.")
+    metadata["param"] = True
 
     return field(**kwargs)
 
@@ -228,16 +147,11 @@ class Module(eqx.Module):
     All PyTree leaves of the Module must be marked with the `param` field.
     """
 
-    # TODO: Leaf node typing. E.g., to distiguish between boolean PyTree and one that is jax.Arrays.
-    # TODO: remove the need for the `__trainables_func__` and `__bijectors_func__` arguments, instead unpack the
-    # trainables' and bijectors' leaves during the __new__ given the checks already performed in the `param` field,
-    # and define `__trainables_leaves__` and `__bijectors_leaves__` as properties.
-    # This would reduce the number of times we have to traverse the PyTree.
-
     def __new__(
         cls,
-        __trainables_func__: Callable[[Module], Module] = _default_trainables,
-        __bijectors_func__: Callable[[Module], Module] = _default_bijectors,
+        __trainables_leaves__: List[bool] = None,
+        __bijectors_leaves__: List[Bijector] = None,
+        __unpack_meta__: bool = True,
         *args: Any,
         **kwargs: Any,
     ) -> Module:
@@ -246,6 +160,7 @@ class Module(eqx.Module):
         Args:
             __trainables_func__ (Callable[[Module], Module]). The function that constructs the trainables PyTree from `self`.
             __bijectors_func__ (Callable[[Module], Module]). The function that constructs the bijectors PyTree from `self`.
+            __unpack_meta__ (bool). Whether to unpack the metadata from the `param` field.
             *args (Any). Arguments.
             **kwargs (Any). Keyword arguments.
 
@@ -255,28 +170,47 @@ class Module(eqx.Module):
 
         obj = super().__new__(cls)
 
-        # Leaf node checking.
-        for field_ in fields(obj):
+        def _unpack_meta(obj: Module) -> Tuple[List[bool], List[Bijector]]:
+            """Unpack trainables from metadata defined by the `param` field.
 
-            if field_.metadata.get("__is_param__") is None:
+            If a leaf is not marked as a parameter then this will raise an error.
+            """
+            train_meta_ = []
+            bij_meta_ = []
+
+            for field_ in fields(obj):
 
                 if field_.metadata.get("static", False):
                     continue
 
-                try:
-                    value_ = obj.__dict__[field_.name]
-                except KeyError:
+                if field_.metadata.get("param", False):
+                    train_meta_.append(field_.metadata["trainable"])
+                    bij_meta_.append(field_.metadata["transform"])
                     continue
 
-                if isinstance(value_, Module):
+                if issubclass(field_.type, Module):
+                    for trainable_, bijector_ in zip(*_unpack_meta(field_.type)):
+                        train_meta_.append(trainable_)
+                        bij_meta_.append(bijector_)
                     continue
 
                 raise ValueError(
                     f"Field `{field_.name}` must either be: \n- marked as a parameter via by the `param` field\n- marked as static via the `static` field metadata\n- a jaxutils.Module."
                 )
 
-        object.__setattr__(obj, "__trainables_func__", __trainables_func__)
-        object.__setattr__(obj, "__bijectors_func__", __bijectors_func__)
+            return train_meta_, bij_meta_
+
+        if __unpack_meta__:
+            train_meta_, bij_meta_ = _unpack_meta(obj)
+
+        if __trainables_leaves__ is None:
+            __trainables_leaves__ = train_meta_
+
+        if __bijectors_leaves__ is None:
+            __bijectors_leaves__ = bij_meta_
+
+        object.__setattr__(obj, "__trainables_leaves__", __trainables_leaves__)
+        object.__setattr__(obj, "__bijectors_leaves__", __bijectors_leaves__)
 
         return obj
 
@@ -287,7 +221,7 @@ class Module(eqx.Module):
         Returns:
             Module: The boolean Module comprising trainability statuses for the Module.
         """
-        return self.__trainables_func__(self)
+        return jtu.tree_structure(self).unflatten(self.__trainables_leaves__)
 
     @_cached_static_property  # Cacheing is fine here as the trainables are static and `Module` is frozen/inmutable.
     def bijectors(self) -> Module:
@@ -296,7 +230,7 @@ class Module(eqx.Module):
         Returns:
             Module: The Bijector Module of parameter transformations.
         """
-        return self.__bijectors_func__(self)
+        return jtu.tree_structure(self).unflatten(self.__bijectors_leaves__)
 
     def set_trainables(self, tree: Module) -> Module:
         """Set parameter trainability status for the Module.
@@ -314,9 +248,7 @@ class Module(eqx.Module):
         if not jtu.tree_structure(tree) == jtu.tree_structure(self):
             raise ValueError("Tree must have the same structure as the Module.")
 
-        return self.__set_trainables_func__(
-            lambda obj: jtu.tree_structure(obj).unflatten(jtu.tree_leaves(tree))
-        )
+        return self.__set_trainables_leaves__(jtu.tree_leaves(tree))
 
     def set_bijectors(self, tree: Module) -> Module:
         """Set parameter transformations for the Module.
@@ -341,20 +273,17 @@ class Module(eqx.Module):
                 "bijectors tree must have the same structure as the Module."
             )
 
-        return self.__set_bijectors_func__(
-            lambda obj: jtu.tree_structure(obj).unflatten(jtu.tree_leaves(tree))
-        )
+        return self.__set_bijectors_leaves__(jtu.tree_leaves(tree))
 
-    def __set_trainables_func__(
-        self, __trainables_func__: Callable[[Module], Module]
-    ) -> Module:
+    def __set_trainables_leaves__(self, __trainables_leaves__: List[bool]) -> Module:
         """Set the trainables function for the class."""
 
         # Create new class instance, with the adjusted trainable function.
         new_instance = self.__class__.__new__(
             cls=self.__class__,
-            __trainables_func__=__trainables_func__,
-            __bijectors_func__=self.__bijectors_func__,
+            __trainables_leaves__=__trainables_leaves__,
+            __bijectors_leaves__=self.__bijectors_leaves__,
+            __unpack_meta__=False,
         )
 
         # TODO: Might have to filter attribute dict here?
@@ -363,16 +292,17 @@ class Module(eqx.Module):
 
         return new_instance
 
-    def __set_bijectors_func__(
-        self, __bijectors_func__: Callable[[Module], Module]
+    def __set_bijectors_leaves__(
+        self, __bijectors_leaves__: Callable[[Module], Module]
     ) -> Module:
         """Set the bijectors function for the class."""
 
         # Create new class instance, with the adjusted trainable function.
         new_instance = self.__class__.__new__(
             self.__class__,
-            __trainables_func_=self.__trainables_func__,
-            __bijectors_func_=__bijectors_func__,
+            __trainables_leaves__=self.__trainables_leaves__,
+            __bijectors_leaves__=__bijectors_leaves__,
+            __unpack_meta__=False,
         )
 
         # TODO: Might have to filter attribute dict here?
@@ -382,15 +312,15 @@ class Module(eqx.Module):
         return new_instance
 
     def tree_flatten(self):
-        """Same as Equinox, except for the addition of the `static_funcs`."""
+        """Same as Equinox, except for the addition of the `static_meta`."""
         dynamic_field_names = []
         dynamic_field_values = []
         static_field_names = []
         static_field_values = []
 
-        static_funcs = [
-            self.__trainables_func__,
-            self.__bijectors_func__,
+        static_meta = [
+            self.__trainables_leaves__,
+            self.__bijectors_leaves__,
         ]
 
         for field_ in fields(self):
@@ -410,22 +340,22 @@ class Module(eqx.Module):
             tuple(dynamic_field_names),
             tuple(static_field_names),
             tuple(static_field_values),
-            tuple(static_funcs),
+            tuple(static_meta),
         )
 
     @classmethod
     def tree_unflatten(cls, aux, dynamic_field_values):
-        """Same as Equinox, except for the addition of the `static_funcs`."""
+        """Same as Equinox, except for the addition of the `static_meta`."""
 
-        dynamic_field_names, static_field_names, static_field_values, static_funcs = aux
+        dynamic_field_names, static_field_names, static_field_values, static_meta = aux
 
         # These are the static functions that determine the trainable and bijector PyTree's from self.
-        __trainables_func__, __bijectors_func__ = static_funcs
+        __trainables_leaves__, __bijectors_leaves__ = static_meta
 
         self = cls.__new__(
             cls=cls,
-            __trainables_func__=__trainables_func__,
-            __bijectors_func__=__bijectors_func__,
+            __trainables_leaves__=__trainables_leaves__,
+            __bijectors_leaves__=__bijectors_leaves__,
         )
 
         for name, value in zip(dynamic_field_names, dynamic_field_values):
