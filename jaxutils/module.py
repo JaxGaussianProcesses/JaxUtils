@@ -20,7 +20,7 @@ import jax
 from jax import lax
 
 from dataclasses import fields, field
-from typing import List, Callable
+from typing import Any, Callable, List
 
 import equinox as eqx
 
@@ -43,7 +43,7 @@ def default_bijectors(obj: Module) -> Module:
 
     Args:
         obj (Module): The PyTree object whoose default bijectors (from the param field) you would to obtain.
-    
+
     Returns:
         Module: A PyTree of bijectors comprising the same structure as `obj`.
     """
@@ -71,13 +71,12 @@ def default_bijectors(obj: Module) -> Module:
 
                 else:
                     bijectors_.append(value_)
-            
-        return bijectors_
-    
-    bijectors_ = _unpack_bijectors_from_meta(obj)
-    
-    return treedef.unflatten(bijectors_)
 
+        return bijectors_
+
+    bijectors_ = _unpack_bijectors_from_meta(obj)
+
+    return treedef.unflatten(bijectors_)
 
 
 def param(transform: Bijector):
@@ -103,7 +102,9 @@ def constrain(obj: Module) -> Module:
     Returns:
         Module: PyTree tranformed to the constrained space.
     """
-    return jtu.tree_map(lambda leaf, transform: transform.forward(leaf), obj, obj.bijectors)
+    return jtu.tree_map(
+        lambda leaf, transform: transform.forward(leaf), obj, obj.bijectors
+    )
 
 
 def unconstrain(obj: Module) -> Module:
@@ -117,13 +118,16 @@ def unconstrain(obj: Module) -> Module:
     Returns:
         Module: PyTree tranformed to the unconstrained space.
     """
-    return jtu.tree_map(lambda leaf, transform: transform.inverse(leaf), obj, obj.bijectors)
+    return jtu.tree_map(
+        lambda leaf, transform: transform.inverse(leaf), obj, obj.bijectors
+    )
 
 
 def stop_gradients(obj: Module) -> Module:
     """
     Stop the gradients flowing through parameters whose trainable status is
     False.
+
     Args:
         obj (Module): PyTree object to stop gradients for.
 
@@ -137,104 +141,129 @@ def stop_gradients(obj: Module) -> Module:
     return jtu.tree_map(lambda *_: _stop_grad(*_), obj, obj.trainables)
 
 
+# TODO: Leaf node typing. E.g., to distiguish between boolean PyTree and one that is jax.Arrays.
+# TODO: Leaf node checking.
+
 
 class Module(eqx.Module):
-    """Base class for all objects of the JaxGaussianProcesses ecosystem."""
+    """Base Module object.
+
+    This object is essentially an Equinox Module (i.e., a registered PyTree dataclass with static field markers),
+    with modifications to handle bijector transformations and trainability statuses.
+
+    """
 
     def __new__(
         cls,
         trainables_func: Callable[[Module], Module] = default_trainables,
         bijectors_func: Callable[[Module], Module] = default_bijectors,
-        *args, 
-        **kwargs,
-        ) -> Module:
-        """ This is used to set the trainables and bijectors functions. As we are working with frozen dataclasses."""
-        
+        *args: Any,
+        **kwargs: Any,
+    ) -> Module:
+        """This is used to set the trainables and bijectors functions. As we are working with frozen dataclasses.
+
+        Args:
+            trainables_func (Callable[[Module], Module]). The function that constructs the trainables PyTree from `self`.
+            bijectors_func (Callable[[Module], Module]). The function that constructs the bijectors PyTree from `self`.
+            *args (Any). Arguments.
+            **kwargs (Any). Keyword arguments.
+
+        Returns:
+            Module. An instance of the JaxUtils Module class.
+        """
+
         instance = super().__new__(cls)
         object.__setattr__(instance, "__trainables_func__", trainables_func)
         object.__setattr__(instance, "__bijectors_func__", bijectors_func)
-        
+
         return instance
 
-    
     @property
-    def _trainables_func(self) -> Callable[[Module], Module]:
-        """This is so we can acess the trainables function from the class."""
-        return self.__trainables_func__
-
-    
-    @property
-    def _bijectors_func(self) -> Callable[[Module], Module]:
-        """This is so we can acess the bijectors function from the class."""
-        return self.__bijectors_func__
-   
-    @property
-    def trainables(self):
-        return self._trainables_func(self)
+    def tree_def(self):
+        """Return the tree definition."""
+        _, tree_def_ = jtu.tree_flatten(self)
+        return tree_def_
 
     @property
-    def bijectors(self):
-        return self._bijectors_func(self)
+    def leaves(self):
+        """Return pytree tree leaves."""
+        leaves_, _ = jtu.tree_flatten(self)
+        return leaves_
 
+    @property
+    def trainables(self) -> Module:
+        """Return the boolean Module comprising trainability statuses.
+
+        Returns:
+            Module. The boolean Module comprising trainability statuses for the Module.
+        """
+        return self.__trainables_func__(self)
+
+    @property
+    def bijectors(self) -> Module:
+        """Return the Bijector Module comprising transformations for parameters to and from the constrained and unconstrained spaces.
+
+        Returns:
+            Module. The Bijector Module of parameter transformations.
+        """
+        return self.__bijectors_func__(self)
 
     def set_trainables(self, tree: Module) -> Module:
+        """Set parameter trainability status for the Module.
 
-        # TODO: Check PyTree leafs are boolean valued.
-        flat, _ = jtu.tree_flatten(tree) 
+        Args:
+            tree (Module). The boolean tree of trainability status comprising the same tree structure as the underlying Module.
 
-        def _trainables_from_self(self: Module) -> Module:
-            _, tree_def = jtu.tree_flatten(self)
-            return tree_def.unflatten(flat)
+        Returns:
+            Module. A new instance with the updated trainablility status tree.
+        """
+        return self.__set_trainables_func__(
+            lambda obj: obj.tree_def.unflatten(tree.leaves)
+        )
 
-        return self._set_trainables(_trainables_from_self)
-
-    
     def set_bijectors(self, tree: Module) -> Module:
+        """Set parameter transformations for the Module.
 
-        # TODO: Check PyTree leafs are Bijectors type.
-        flat, _ = jtu.tree_flatten(tree)
+        Args:
+            tree (Module). The Bijector tree of parameter transformations comprising the same tree structure as the underlying Module.
 
-        def _bijectors_from_self(self: Module) -> Module:
-            _, tree_def = jtu.tree_flatten(self)
-            return tree_def.unflatten(flat)
+        Returns:
+            Module. A new instance with the updated trainablility status tree.
+        """
+        return self.__set_bijectors_func__(
+            lambda obj: obj.tree_def.unflatten(tree.leaves)
+        )
 
-        return self._set_bijectors(_bijectors_from_self)
-
-        
-    def _set_trainables(self, func: Callable[[Module], Module]):
+    def __set_trainables_func__(self, func: Callable[[Module], Module]) -> Module:
         """Set the trainables function for the class."""
 
-        cls = self.__class__
-
         # Create new class instance, with the adjusted trainable function.
-        new_instance = cls.__new__(
-            cls, 
+        new_instance = self.__class__.__new__(
+            self.__class__,
             trainables_func=func,
-            bijectors_func = self.__bijectors_func__,
-            )
+            bijectors_func=self.__bijectors_func__,
+        )
 
         # TODO: Might have to filter attribute dict here?
         for field_ in fields(self):
             object.__setattr__(new_instance, field_.name, self.__dict__[field_.name])
-        
+
         return new_instance
 
-    def _set_bijectors(self, func: Callable[[Module], Module]):   
+    def __set_bijectors_func__(self, func: Callable[[Module], Module]) -> Module:
         """Set the bijectors function for the class."""
 
-        cls = self.__class__
-
         # Create new class instance, with the adjusted trainable function.
-        new_instance = cls.__new__(
-            cls, 
+        new_instance = self.__class__.__new__(
+            self.__class__,
             trainables_func=self.__trainables_func__,
-            bijectors_func = func,
-            )
+            bijectors_func=func,
+        )
 
         # TODO: Might have to filter attribute dict here?
         for field_ in fields(self):
             object.__setattr__(new_instance, field_.name, self.__dict__[field_.name])
-        
+
         return new_instance
 
     def tree_flatten(self):
@@ -243,12 +272,12 @@ class Module(eqx.Module):
         dynamic_field_values = []
         static_field_names = []
         static_field_values = []
-        
+
         static_funcs = [
-            self.__trainables_func__, 
+            self.__trainables_func__,
             self.__bijectors_func__,
-            ]
-        
+        ]
+
         for field_ in fields(self):
             name = field_.name
             try:
@@ -261,12 +290,12 @@ class Module(eqx.Module):
             else:
                 dynamic_field_names.append(name)
                 dynamic_field_values.append(value)
-        
+
         return tuple(dynamic_field_values), (
             tuple(dynamic_field_names),
             tuple(static_field_names),
             tuple(static_field_values),
-            tuple(static_funcs)
+            tuple(static_funcs),
         )
 
     @classmethod
@@ -276,14 +305,14 @@ class Module(eqx.Module):
         dynamic_field_names, static_field_names, static_field_values, static_funcs = aux
 
         # These are the static functions that determine the trainable and bijector PyTree's from self.
-        __trainables_func__, __bijectors_func__ = static_funcs
-        
+        trainables_func, bijectors_func = static_funcs
+
         self = cls.__new__(
-            cls, 
-            trainables_func = __trainables_func__, 
-            bijectors_func  = __bijectors_func__,
+            cls,
+            trainables_func=trainables_func,
+            bijectors_func=bijectors_func,
         )
-        
+
         for name, value in zip(dynamic_field_names, dynamic_field_values):
             object.__setattr__(self, name, value)
         for name, value in zip(static_field_names, static_field_values):

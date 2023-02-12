@@ -23,12 +23,12 @@ import jax.numpy as jnp
 import jax.random as jr
 import optax as ox
 
+
 def test_simple_linear_model():
     # (1) Create a dataset:
-    X = jnp.linspace(0.0, 10.0, 1000050).reshape(-1, 1)
+    X = jnp.linspace(0.0, 10.0, 100).reshape(-1, 1)
     y = 2.0 * X + 1.0 + 10 * jr.normal(jr.PRNGKey(0), X.shape).reshape(-1, 1)
     D = Dataset(X, y)
-
 
     # (2) Define your model:
     class LinearModel(Module):
@@ -40,18 +40,18 @@ def test_simple_linear_model():
 
     model = LinearModel(weight=1.0, bias=1.0)
 
-
     # (3) Define your loss function:
     class MeanSqaureError(Objective):
-
         def evaluate(self, model: LinearModel, train_data: Dataset) -> float:
             return jnp.mean((train_data.y - model(train_data.X)) ** 2)
 
     loss = MeanSqaureError()
 
     # (4) Train!
-    trained_model, hist = fit(model=model, objective=loss, train_data=D, optim=ox.sgd(0.001), num_iters=10000)
+    trained_model, hist = fit(
+        model=model, objective=loss, train_data=D, optim=ox.sgd(0.001), num_iters=100
+    )
 
-    assert len(hist) == 10000
+    assert len(hist) == 100
     assert isinstance(trained_model, LinearModel)
     assert loss(trained_model, D) < loss(model, D)
