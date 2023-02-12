@@ -52,10 +52,10 @@ def progress_bar(num_iters: int, log_rate: int) -> Callable:
 
     def _update_tqdm(args: Any, transform: Any) -> None:
         """Update the tqdm progress bar with the latest objective value."""
-        loss_val, arg = args
-        tqdm_bars[0].set_description(f"Training", refresh=False)
-        tqdm_bars[0].update(arg)
-        tqdm_bars[0].set_postfix({"Objective": f"{loss_val: .2f}"})
+        value, iter_num = args
+        tqdm_bars[0].set_description(f"Running", refresh=False)
+        tqdm_bars[0].update(iter_num)
+        tqdm_bars[0].set_postfix({"Value": f"{value: .2f}"})
 
     def _close_tqdm(args: Any, transform: Any) -> None:
         """Close the tqdm progress bar."""
@@ -75,7 +75,7 @@ def progress_bar(num_iters: int, log_rate: int) -> Callable:
 
         _ = lax.cond(cond, _do_callback, _not_callback, operand=None)
 
-    def _update_progress_bar(loss_val: Float[Array, "1"], iter_num: int) -> None:
+    def _update_progress_bar(value: Float[Array, "1"], iter_num: int) -> None:
         """Update the tqdm progress bar."""
 
         # Conditions for iteration number
@@ -86,10 +86,10 @@ def progress_bar(num_iters: int, log_rate: int) -> Callable:
         is_last: bool = iter_num == num_iters - 1
 
         # Update progress bar, if multiple of log_rate
-        _callback(is_multiple, _update_tqdm, (loss_val, log_rate))
+        _callback(is_multiple, _update_tqdm, (value, log_rate))
 
         # Update progress bar, if remainder
-        _callback(is_remainder, _update_tqdm, (loss_val, remainder))
+        _callback(is_remainder, _update_tqdm, (value, remainder))
 
         # Close progress bar, if last iteration
         _callback(is_last, _close_tqdm, None)
@@ -108,11 +108,11 @@ def progress_bar(num_iters: int, log_rate: int) -> Callable:
             # Compute iteration step
             result = body_fun(carry, x)
 
-            # Get loss value
-            *_, loss_val = result
+            # Get value
+            *_, value = result
 
             # Update progress bar
-            _update_progress_bar(loss_val, iter_num)
+            _update_progress_bar(value, iter_num)
 
             return result
 

@@ -44,6 +44,7 @@ def fit(
     key: Optional[KeyArray] = jr.PRNGKey(42),
     log_rate: Optional[int] = 10,
     verbose: Optional[bool] = True,
+    unroll: int = 1,
 ) -> Tuple[Module, Array]:
     """Train a Module model with respect to a supplied Objective function. Optimisers used here should originate from Optax.
 
@@ -108,6 +109,7 @@ def fit(
         key (Optional[KeyArray]): The random key to use for the optimisation batch selection. Defaults to jr.PRNGKey(42).
         log_rate (Optional[int]): How frequently the objective function's value should be printed. Defaults to 10.
         verbose (Optional[bool]): Whether to print the training loading bar. Defaults to True.
+        unroll (int): The number of unrolled steps to use for the optimisation. Defaults to 1.
 
     Returns:
         Tuple[Module, Array]: A Tuple comprising the optimised model and training history respectively.
@@ -162,7 +164,9 @@ def fit(
         step = progress_bar(num_iters, log_rate)(step)
 
     # Optimisation loop.
-    (model, _), history = jax.lax.scan(step, (model, state), (iter_nums, iter_keys))
+    (model, _), history = jax.lax.scan(
+        step, (model, state), (iter_nums, iter_keys), unroll=unroll
+    )
 
     # Constrained space.
     model = constrain(model)
