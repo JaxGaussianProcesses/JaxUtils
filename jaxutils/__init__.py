@@ -18,7 +18,7 @@ from .bijectors import Bijector, Identity, Softplus
 from .objective import Objective
 from .dataset import Dataset
 from .fit import get_batch
-from .progress_bar import progress_bar_scan
+from .progress_bar import progress_bar
 
 
 __authors__ = "Thomas Pinder, Daniel Dodd"
@@ -43,7 +43,7 @@ __all__ = [
     "unconstrain",
     "stop_gradients" "fit",
     "get_batch",
-    "progress_bar_scan",
+    "progress_bar",
 ]
 
 from . import _version

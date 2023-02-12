@@ -30,7 +30,7 @@ from .module import Module, constrain, unconstrain, stop_gradients
 from .dataset import Dataset
 from .bijectors import Bijector
 from .objective import Objective
-from .progress_bar import progress_bar_scan
+from .progress_bar import progress_bar
 
 
 def fit(
@@ -159,7 +159,7 @@ def fit(
 
     # Progress bar, if verbose True.
     if verbose:
-        step = progress_bar_scan(num_iters, log_rate)(step)
+        step = progress_bar(num_iters, log_rate)(step)
 
     # Optimisation loop.
     (model, _), history = jax.lax.scan(step, (model, state), (iter_nums, iter_keys))
