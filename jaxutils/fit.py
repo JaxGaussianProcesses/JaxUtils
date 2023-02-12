@@ -20,6 +20,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import optax as ox
 
+import jax.tree_util as jtu
 from jax.random import KeyArray
 from jax._src.random import _check_prng_key
 from jaxtyping import Array, Float
@@ -138,6 +139,18 @@ def _check_model(model: Any) -> None:
     """Check that the model is of type Module."""
     if not isinstance(model, Module):
         raise TypeError("model must be of type jaxutils.Module")
+
+    uncstr_ = unconstrain(model)
+    cstr_ = constrain(uncstr_)
+
+    if not jtu.tree_structure(model) == jtu.tree_structure(model.trainables):
+        raise TypeError("trainables should have same tree structure as model")
+
+    if not jtu.tree_structure(model) == jtu.tree_structure(uncstr_):
+        raise TypeError("bijectors should have same tree structure as model")
+
+    if not jtu.tree_structure(model) == jtu.tree_structure(cstr_):
+        raise TypeError("bijectors should have same tree structure as model")
 
 
 def _check_objective(objective: Any) -> None:

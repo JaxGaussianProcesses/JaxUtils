@@ -27,18 +27,6 @@ import equinox as eqx
 from .bijectors import Bijector
 
 
-def tree_def(obj: Module):
-    """Return Module tree definition."""
-    _, tree_def_ = jtu.tree_flatten(obj)
-    return tree_def_
-
-
-def leaves(obj: Module):
-    """Return Module leaves."""
-    leaves_, _ = jtu.tree_flatten(obj)
-    return leaves_
-
-
 def default_trainables(obj: Module) -> Module:
     """
     Construct trainable statuses for each parameter. By default,
@@ -60,7 +48,7 @@ def default_bijectors(obj: Module) -> Module:
         Module: A PyTree of bijectors comprising the same structure as `obj`.
     """
 
-    tree_def_ = tree_def(obj)
+    tree_def_ = jtu.tree_structure(obj)
 
     def _unpack_bijectors_from_meta(obj: Module) -> List[Bijector]:
         """Unpack bijectors from metatdata."""
@@ -233,8 +221,15 @@ class Module(eqx.Module):
         Returns:
             Module. A new instance with the updated trainablility status tree.
         """
+
+        if not isinstance(tree, Module):
+            raise TypeError("Tree must be a JaxUtils Module.")
+
+        if not jtu.tree_structure(tree) == jtu.tree_structure(self):
+            raise ValueError("Tree must have the same structure as the Module.")
+
         return self.__set_trainables_func__(
-            lambda obj: tree_def(obj).unflatten(leaves(tree))
+            lambda obj: jtu.tree_structure(obj).unflatten(jtu.tree_leaves(tree))
         )
 
     def set_bijectors(self, tree: Module) -> Module:
@@ -246,8 +241,12 @@ class Module(eqx.Module):
         Returns:
             Module. A new instance with the updated trainablility status tree.
         """
+
+        if not isinstance(tree, Module):
+            raise TypeError("tree must be a JaxUtils Module.")
+
         return self.__set_bijectors_func__(
-            lambda obj: tree_def(obj).unflatten(leaves(tree))
+            lambda obj: jtu.tree_structure(obj).unflatten(jtu.tree_leaves(tree))
         )
 
     def __set_trainables_func__(
@@ -345,7 +344,7 @@ class Module(eqx.Module):
 __all__ = [
     "Module",
     "param",
-    "constrain",
+    "default_trainables" "default_bijectors" "constrain",
     "unconstrain",
     "stop_gradients",
 ]
