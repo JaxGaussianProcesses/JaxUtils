@@ -20,7 +20,9 @@ from typing import Callable
 
 
 class Bijector(eqx.Module):
-    """Base class for parameter bijector transformations. These are useful for model optimisation, where gradients are taken in the "unconstrained" (real) parameter space, while evaluating the model takes place in the "constrained" parameter space.
+    """Base class for parameter bijector transformations. These are useful for model optimisation, where
+    gradients are taken in the "unconstrained" (real) parameter space, while evaluating the model takes place
+    in the "constrained" parameter space.
 
     For example, the Softplus bijector, f, is defined as:
         f(x) = log(1 + exp(x))
