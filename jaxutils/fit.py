@@ -21,6 +21,7 @@ import jax.random as jr
 import optax as ox
 
 from jax.random import KeyArray
+from jax._src.random import _check_prng_key
 from jaxtyping import Array, Float
 from typing import Any
 
@@ -42,11 +43,10 @@ def fit(
     log_rate: Optional[int] = 10,
     verbose: Optional[bool] = True,
 ) -> Tuple[Module, Array]:
-    """Abstracted method for fitting a GP model with respect to a supplied objective function.
-    Optimisers used here should originate from Optax.
+    """Train a Module model with respect to a supplied Objective function. Optimisers used here should originate from Optax.
 
     Args:
-        model (eqx.Module): The model that is to be optimised.
+        model (Module): The model Module to be optimised.
         objective (Objective): The objective function that we are optimising with respect to.
         optim (GradientTransformation): The Optax optimiser that is to be used for learning a parameter set.
         num_iters (Optional[int]): The number of optimisation steps to run. Defaults to 100.
@@ -66,10 +66,9 @@ def fit(
     _check_optim(optim)
     _check_num_iters(num_iters)
     _check_batch_size(batch_size)
-    _check_key(key)
+    _check_prng_key(key)
     _check_log_rate(log_rate)
     _check_verbose(verbose)
-    
 
     # Unconstrained space loss function with stop-gradient rule for non-trainable params.
     def loss(model: Module, batch: Dataset) -> Float[Array, "1"]:
@@ -117,7 +116,6 @@ def fit(
     return model, history
 
 
-
 def get_batch(train_data: Dataset, batch_size: int, key: KeyArray) -> Dataset:
     """Batch the data into mini-batches. Sampling is done with replacement.
 
@@ -136,53 +134,56 @@ def get_batch(train_data: Dataset, batch_size: int, key: KeyArray) -> Dataset:
     return Dataset(X=x[indicies], y=y[indicies])
 
 
-
 def _check_model(model: Any) -> None:
     """Check that the model is of type Module."""
     if not isinstance(model, Module):
         raise TypeError("model must be of type jaxutils.Module")
+
 
 def _check_objective(objective: Any) -> None:
     """Check that the objective is of type Objective."""
     if not isinstance(objective, Objective):
         raise TypeError("objective must be of type jaxutils.Objective")
 
+
 def _check_train_data(train_data: Any) -> None:
     """Check that the train_data is of type Dataset."""
     if not isinstance(train_data, Dataset):
         raise TypeError("train_data must be of type jaxutils.Dataset")
 
+
 def _check_optim(optim: Any) -> None:
     if not isinstance(optim, ox.GradientTransformation):
         raise TypeError("optax_optim must be of type optax.GradientTransformation")
+
 
 def _check_num_iters(num_iters: Any) -> None:
     if not isinstance(num_iters, int):
         raise TypeError("num_iters must be of type int")
 
-    if not num_iters >  0:
+    if not num_iters > 0:
         raise ValueError("num_iters must be positive")
-    
+
+
 def _check_log_rate(log_rate: Any) -> None:
     if not isinstance(log_rate, int):
         raise TypeError("log_rate must be of type int")
-    
-    if not log_rate >  0:
+
+    if not log_rate > 0:
         raise ValueError("log_rate must be positive")
+
 
 def _check_verbose(verbose: Any) -> None:
     if not isinstance(verbose, bool):
         raise TypeError("verbose must be of type bool")
 
-def _check_key(key: Any) -> None:
-    pass
 
 def _check_batch_size(batch_size: Any) -> None:
     if not isinstance(batch_size, int):
         raise TypeError("batch_size must be of type int")
-    
+
     if not batch_size == -1:
-        if not batch_size >  0:
+        if not batch_size > 0:
             raise ValueError("batch_size must be positive")
 
 
