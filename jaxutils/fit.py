@@ -47,9 +47,61 @@ def fit(
 ) -> Tuple[Module, Array]:
     """Train a Module model with respect to a supplied Objective function. Optimisers used here should originate from Optax.
 
+    !!! example
+        ```python
+        import jax.numpy as jnp
+        import jaxutils as ju
+        import optax as ox
+
+        # (1) Create a dataset:
+        X = jnp.linspace(0.0, 10.0, 100).reshape(-1, 1)
+        y = 2.0 * X + 1.0 + 10 * jr.normal(jr.PRNGKey(0), X.shape).reshape(-1, 1)
+        D = ju.Dataset(X, y)
+
+        # (2) Define your model:
+        class LinearModel(ju.Module):
+            weight: float = ju.param(transform=ju.Identity, trainable=True)
+            bias: float = ju.param(transform=ju.Identity, trainable=True)
+
+            def __call__(self, x):
+                return self.weight * x + self.bias
+
+        model = LinearModel(weight=1.0, bias=1.0)
+
+        # (3) Define your loss function:
+        class MeanSqaureError(Objective):
+            def evaluate(self, model: LinearModel, train_data: ju.Dataset) -> float:
+                y_pred = model(train_data.X)
+                return jnp.mean((y_pred - train_data.y) ** 2)
+
+        loss = MeanSqaureError()
+
+        # (4) Define your optimiser:
+        optim = ox.adam(1e-3)
+
+        # (5) Train your model:
+        model, history = ju.fit(model=model, objective=loss, train_data=D, optim=optim, num_iters=1000)
+
+        # (6) Plot the training history:
+        import matplotlib.pyplot as plt
+        plt.plot(history)
+        plt.show()
+
+        # (7) Plot the model predictions:
+        X_test = jnp.linspace(0.0, 10.0, 1000).reshape(-1, 1)
+        y_test = model(X_test)
+        plt.plot(X_test, y_test)
+        plt.scatter(D.X, D.y)
+        plt.show()
+
+        # (8) Print the final model parameters:
+        print(model)
+        ```
+
     Args:
         model (Module): The model Module to be optimised.
         objective (Objective): The objective function that we are optimising with respect to.
+        train_data (Dataset): The training data to be used for the optimisation.
         optim (GradientTransformation): The Optax optimiser that is to be used for learning a parameter set.
         num_iters (Optional[int]): The number of optimisation steps to run. Defaults to 100.
         batch_size (Optional[int]): The size of the mini-batch to use. Defaults to -1 (i.e. full batch).
@@ -124,6 +176,7 @@ def get_batch(train_data: Dataset, batch_size: int, key: KeyArray) -> Dataset:
     Args:
         train_data (Dataset): The training dataset.
         batch_size (int): The batch size.
+        key (KeyArray): The random key to use for the batch selection.
 
     Returns:
         Dataset: The batched dataset.
@@ -137,7 +190,7 @@ def get_batch(train_data: Dataset, batch_size: int, key: KeyArray) -> Dataset:
 
 
 def _check_model(model: Any) -> None:
-    """Check that the model is of type Module."""
+    """Check that the model is of type Module. Check trainables and bijectors tree structure."""
     if not isinstance(model, Module):
         raise TypeError("model must be of type jaxutils.Module")
 
@@ -166,11 +219,13 @@ def _check_train_data(train_data: Any) -> None:
 
 
 def _check_optim(optim: Any) -> None:
+    """Check that the optimiser is of type GradientTransformation."""
     if not isinstance(optim, ox.GradientTransformation):
         raise TypeError("optax_optim must be of type optax.GradientTransformation")
 
 
 def _check_num_iters(num_iters: Any) -> None:
+    """Check that the number of iterations is of type int and positive."""
     if not isinstance(num_iters, int):
         raise TypeError("num_iters must be of type int")
 
@@ -179,6 +234,7 @@ def _check_num_iters(num_iters: Any) -> None:
 
 
 def _check_log_rate(log_rate: Any) -> None:
+    """Check that the log rate is of type int and positive."""
     if not isinstance(log_rate, int):
         raise TypeError("log_rate must be of type int")
 
@@ -187,11 +243,13 @@ def _check_log_rate(log_rate: Any) -> None:
 
 
 def _check_verbose(verbose: Any) -> None:
+    """Check that the verbose is of type bool."""
     if not isinstance(verbose, bool):
         raise TypeError("verbose must be of type bool")
 
 
 def _check_batch_size(batch_size: Any) -> None:
+    """Check that the batch size is of type int and positive if not minus 1."""
     if not isinstance(batch_size, int):
         raise TypeError("batch_size must be of type int")
 
