@@ -27,6 +27,18 @@ import equinox as eqx
 from .bijectors import Bijector
 
 
+def tree_def(obj: Module):
+    """Return Module tree definition."""
+    _, tree_def_ = jtu.tree_flatten(obj)
+    return tree_def_
+
+
+def leaves(obj: Module):
+    """Return Module leaves."""
+    leaves_, _ = jtu.tree_flatten(obj)
+    return leaves_
+
+
 def default_trainables(obj: Module) -> Module:
     """
     Construct trainable statuses for each parameter. By default,
@@ -48,7 +60,7 @@ def default_bijectors(obj: Module) -> Module:
         Module: A PyTree of bijectors comprising the same structure as `obj`.
     """
 
-    _, treedef = jtu.tree_flatten(obj)
+    tree_def_ = tree_def(obj)
 
     def _unpack_bijectors_from_meta(obj: Module) -> List[Bijector]:
         """Unpack bijectors from metatdata."""
@@ -76,19 +88,35 @@ def default_bijectors(obj: Module) -> Module:
 
     bijectors_ = _unpack_bijectors_from_meta(obj)
 
-    return treedef.unflatten(bijectors_)
+    return tree_def_.unflatten(bijectors_)
 
 
-def param(transform: Bijector):
-    """Set leaf node metadata for a parameter.
+def param(transform: Bijector, **kwargs: Any):
+    """Used for marking default parameter transformations.
+
+    !!! example
+
+        ```python
+        class MyModule(jaxutils.Module):
+            param_a: float = jaxutils.param(jaxutils.Identity)
+            param_b: float = jaxutils.param(jaxutils.Softplus)
+        ```
+
+    All PyTree leaves of the Module must be marked.
 
     Args:
-        transform (Bijector): A default bijector transformation for the parameter.
-
-    Returns:
-        A field with the metadata set.
+        transform (Bijector). The default bijector that should be should upon Module initialisation.
+        **kwargs (Any). If any are passed then they are passed on to `datacalss.field`.
+        (Recall that JaxUtils uses dataclasses for its modules, based on Equinox's infrastructure.)
     """
-    return field(metadata={"transform": transform})
+    try:
+        metadata = dict(kwargs["metadata"])
+    except KeyError:
+        metadata = kwargs["metadata"] = {}
+    if "transform" in metadata:
+        raise ValueError("Cannot use metadata with `transform` already set.")
+    metadata["transform"] = transform
+    return field(**kwargs)
 
 
 def constrain(obj: Module) -> Module:
@@ -155,16 +183,16 @@ class Module(eqx.Module):
 
     def __new__(
         cls,
-        trainables_func: Callable[[Module], Module] = default_trainables,
-        bijectors_func: Callable[[Module], Module] = default_bijectors,
+        __trainables_func__: Callable[[Module], Module] = default_trainables,
+        __bijectors_func__: Callable[[Module], Module] = default_bijectors,
         *args: Any,
         **kwargs: Any,
     ) -> Module:
         """This is used to set the trainables and bijectors functions. As we are working with frozen dataclasses.
 
         Args:
-            trainables_func (Callable[[Module], Module]). The function that constructs the trainables PyTree from `self`.
-            bijectors_func (Callable[[Module], Module]). The function that constructs the bijectors PyTree from `self`.
+            __trainables_func__ (Callable[[Module], Module]). The function that constructs the trainables PyTree from `self`.
+            __bijectors_func__ (Callable[[Module], Module]). The function that constructs the bijectors PyTree from `self`.
             *args (Any). Arguments.
             **kwargs (Any). Keyword arguments.
 
@@ -173,22 +201,10 @@ class Module(eqx.Module):
         """
 
         instance = super().__new__(cls)
-        object.__setattr__(instance, "__trainables_func__", trainables_func)
-        object.__setattr__(instance, "__bijectors_func__", bijectors_func)
+        object.__setattr__(instance, "__trainables_func__", __trainables_func__)
+        object.__setattr__(instance, "__bijectors_func__", __bijectors_func__)
 
         return instance
-
-    @property
-    def tree_def(self):
-        """Return the tree definition."""
-        _, tree_def_ = jtu.tree_flatten(self)
-        return tree_def_
-
-    @property
-    def leaves(self):
-        """Return pytree tree leaves."""
-        leaves_, _ = jtu.tree_flatten(self)
-        return leaves_
 
     @property
     def trainables(self) -> Module:
@@ -218,7 +234,7 @@ class Module(eqx.Module):
             Module. A new instance with the updated trainablility status tree.
         """
         return self.__set_trainables_func__(
-            lambda obj: obj.tree_def.unflatten(tree.leaves)
+            lambda obj: tree_def(obj).unflatten(leaves(tree))
         )
 
     def set_bijectors(self, tree: Module) -> Module:
@@ -231,7 +247,7 @@ class Module(eqx.Module):
             Module. A new instance with the updated trainablility status tree.
         """
         return self.__set_bijectors_func__(
-            lambda obj: obj.tree_def.unflatten(tree.leaves)
+            lambda obj: tree_def(obj).unflatten(leaves(tree))
         )
 
     def __set_trainables_func__(
@@ -241,9 +257,9 @@ class Module(eqx.Module):
 
         # Create new class instance, with the adjusted trainable function.
         new_instance = self.__class__.__new__(
-            self.__class__,
-            trainables_func=__trainables_func__,
-            bijectors_func=self.__bijectors_func__,
+            cls=self.__class__,
+            __trainables_func__=__trainables_func__,
+            __bijectors_func__=self.__bijectors_func__,
         )
 
         # TODO: Might have to filter attribute dict here?
@@ -260,8 +276,8 @@ class Module(eqx.Module):
         # Create new class instance, with the adjusted trainable function.
         new_instance = self.__class__.__new__(
             self.__class__,
-            trainables_func=self.__trainables_func__,
-            bijectors_func=__bijectors_func__,
+            __trainables_func_=self.__trainables_func__,
+            __bijectors_func_=__bijectors_func__,
         )
 
         # TODO: Might have to filter attribute dict here?
@@ -309,16 +325,17 @@ class Module(eqx.Module):
         dynamic_field_names, static_field_names, static_field_values, static_funcs = aux
 
         # These are the static functions that determine the trainable and bijector PyTree's from self.
-        trainables_func, bijectors_func = static_funcs
+        __trainables_func__, __bijectors_func__ = static_funcs
 
         self = cls.__new__(
-            cls,
-            trainables_func=trainables_func,
-            bijectors_func=bijectors_func,
+            cls=cls,
+            __trainables_func__=__trainables_func__,
+            __bijectors_func__=__bijectors_func__,
         )
 
         for name, value in zip(dynamic_field_names, dynamic_field_values):
             object.__setattr__(self, name, value)
+
         for name, value in zip(static_field_names, static_field_values):
             object.__setattr__(self, name, value)
 
