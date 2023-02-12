@@ -12,18 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Bijectors for use in model optimisation."""
 
-import equinox as eqx
 import jax.numpy as jnp
+import equinox as eqx
 from typing import Callable
 
-class Bijector(eqx.Module):
-    """Base class for bijectors.
 
-    All you need to do is define a forward and inverse transformation.
+class Bijector(eqx.Module):
+    """Base class for parameter bijector transformations. These are useful for model optimisation, where gradients are taken in the "unconstrained" (real) parameter space, while evaluating the model takes place in the "constrained" parameter space.
+
+    For example, the Softplus bijector, f, is defined as:
+        f(x) = log(1 + exp(x))
+        f^{-1}(y) = log(exp(y) - 1)
+
+    gives the "unconstrained" parameter space as the real line, while the "constrained" parameter space is the positive real line.
+    This means we can ensure that the corresponding model parameter remains positive during optimisation.
+
+    To implement your own bijector, you need to do is define a `forward` and `inverse` transformation!
 
     Adding log_det_jacobian's etc., is on the TODO list of this class.
     """
+
     forward: Callable = eqx.static_field()
     inverse: Callable = eqx.static_field()
 
@@ -38,11 +48,11 @@ Softplus = Bijector(
 )
 
 """Triangular bijector."""
-#TODO: Add triangular bijector.
+# TODO: Add triangular bijector.
 
 
 __all__ = [
     "Bijector",
     "Identity",
-    "Softplus", 
+    "Softplus",
 ]
