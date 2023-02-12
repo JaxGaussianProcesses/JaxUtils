@@ -229,6 +229,10 @@ class Module(eqx.Module):
     """
 
     # TODO: Leaf node typing. E.g., to distiguish between boolean PyTree and one that is jax.Arrays.
+    # TODO: remove the need for the `__trainables_func__` and `__bijectors_func__` arguments, instead unpack the
+    # trainables' and bijectors' leaves during the __new__ given the checks already performed in the `param` field,
+    # and define `__trainables_leaves__` and `__bijectors_leaves__` as properties.
+    # This would reduce the number of times we have to traverse the PyTree.
 
     def __new__(
         cls,
