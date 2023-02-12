@@ -24,7 +24,7 @@ from jax.random import KeyArray
 from jaxtyping import Array, Float
 from typing import Any
 
-from .module import Module, constrain, unconstrain, stop_gradients, default_bijectors, default_trainables
+from .module import Module, constrain, unconstrain, stop_gradients
 from .dataset import Dataset
 from .objective import Objective
 from .progress_bar import progress_bar_scan
@@ -41,8 +41,6 @@ def fit(
     key: Optional[KeyArray] = jr.PRNGKey(42),
     log_rate: Optional[int] = 10,
     verbose: Optional[bool] = True,
-    bijectors: Module = None,
-    trainables: Module = None,
 ) -> Tuple[Module, Array]:
     """Abstracted method for fitting a GP model with respect to a supplied objective function.
     Optimisers used here should originate from Optax.
@@ -56,20 +54,10 @@ def fit(
         key (Optional[KeyArray]): The random key to use for the optimisation batch selection. Defaults to jr.PRNGKey(42).
         log_rate (Optional[int]): How frequently the objective function's value should be printed. Defaults to 10.
         verbose (Optional[bool]): Whether to print the training loading bar. Defaults to True.
-        bijectors (Any): The bijectors to use for the model.
-        trainables (Any): The trainables to use for the model.
 
     Returns:
         Tuple[Module, Array]: A Tuple comprising the optimised model and training history respectively.
     """
-    
-    # Initialise bijectors from defaults if not supplied.
-    if bijectors is None:
-        bijectors = default_bijectors(model)
-    
-    # Initialise trainables from defaults if not supplied.
-    if trainables is None:
-        trainables = default_trainables(model)
 
     # Check inputs.
     _check_model(model)
@@ -81,18 +69,16 @@ def fit(
     _check_key(key)
     _check_log_rate(log_rate)
     _check_verbose(verbose)
-    _check_bijectors(bijectors)
-    _check_trainables(trainables)
     
 
     # Unconstrained space loss function with stop-gradient rule for non-trainable params.
     def loss(model: Module, batch: Dataset) -> Float[Array, "1"]:
-        model = stop_gradients(model, trainables)
-        model = constrain(model, bijectors)
+        model = stop_gradients(model)
+        model = constrain(model)
         return objective(model, batch)
 
     # Unconstrained space model.
-    model = unconstrain(model, bijectors)
+    model = unconstrain(model)
 
     # Initialise optimiser state.
     state = optim.init(model)
@@ -126,7 +112,7 @@ def fit(
     (model, _), history = jax.lax.scan(step, (model, state), (iter_nums, iter_keys))
 
     # Constrained space.
-    model = constrain(model, bijectors)
+    model = constrain(model)
 
     return model, history
 
@@ -199,14 +185,8 @@ def _check_batch_size(batch_size: Any) -> None:
         if not batch_size >  0:
             raise ValueError("batch_size must be positive")
 
-def _check_bijectors(bijectors: Any) -> None:
-    pass
-
-def _check_trainables(trainables: Any) -> None:
-    pass
 
 __all__ = [
     "fit",
-    "fit_natgrads",
     "get_batch",
 ]

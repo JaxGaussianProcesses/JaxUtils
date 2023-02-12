@@ -16,7 +16,7 @@
 import jax.numpy as jnp
 import pytest
 from jaxutils.module import Module, param, constrain, unconstrain, stop_gradients, default_bijectors, default_trainables
-from jaxutils.bijectors import Bijector, Identity, Softplus
+from jaxutils.bijectors import Identity, Softplus
 import jax.tree_util as jtu
 import jax
 
@@ -57,8 +57,8 @@ def test_module():
         assert t1 == t2
 
     # Test constrain and unconstrain
-    constrained = constrain(tree, bijectors)
-    unconstrained = unconstrain(tree, bijectors)
+    constrained = constrain(tree)
+    unconstrained = unconstrain(tree)
     
     leafs = jtu.tree_leaves(tree)
 
@@ -72,13 +72,15 @@ def test_module():
     _, tree_def = jax.tree_flatten(tree)
     trainables = tree_def.unflatten([True, False, True, False, False])
 
+    new_tree = tree.set_trainables(trainables)
+
 
     # Test stop gradients
     def loss(tree):
-        tree = stop_gradients(tree, trainables)
+        tree = stop_gradients(tree)
         return jnp.sum(tree.param_a**2 + tree.sub_tree.param_c**2 + tree.sub_tree.param_d**2 + tree.sub_tree.param_e**2 + tree.param_b**2)
 
-    g = jax.grad(loss)(tree)
+    g = jax.grad(loss)(new_tree)
 
     assert g.param_a == 2.0
     assert g.sub_tree.param_c == 0.0
