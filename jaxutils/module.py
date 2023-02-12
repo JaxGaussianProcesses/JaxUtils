@@ -27,8 +27,8 @@ import equinox as eqx
 from .bijectors import Bijector
 
 
-class _cache_static_property:
-    """decorator to caches result of static immutable properties of a PyTree.
+class _cached_static_property:
+    """Decorator to cache result of static immutable properties of a PyTree.
 
     Courtesy of Kernex library.
 
@@ -244,7 +244,7 @@ class Module(eqx.Module):
 
         return instance
 
-    @_cache_static_property
+    @_cached_static_property
     def trainables(self) -> Module:
         """Return the boolean Module comprising trainability statuses.
 
@@ -253,7 +253,7 @@ class Module(eqx.Module):
         """
         return self.__trainables_func__(self)
 
-    @_cache_static_property
+    @_cached_static_property
     def bijectors(self) -> Module:
         """Return the Bijector Module comprising transformations for parameters to and from the constrained and unconstrained spaces.
 
