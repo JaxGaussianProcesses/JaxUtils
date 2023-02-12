@@ -20,13 +20,14 @@ from typing import Optional
 
 import equinox as eqx
 
+
 class Dataset(eqx.Module):
+    """Base class for datasets."""
+
     X: Optional[Float[Array, "N D"]] = None
     y: Optional[Float[Array, "N Q"]] = None
 
-    """Dataset class."""
-
-    #TODO: Consider HeterotopicDataset and IsotopicDataset abstractions.
+    # TODO: Consider HeterotopicDataset and IsotopicDataset abstractions.
 
     def __init__(
         self,
@@ -34,6 +35,8 @@ class Dataset(eqx.Module):
         y: Optional[Float[Array, "N Q"]] = None,
     ) -> None:
         """
+        Initialise a dataset object.
+
         Args:
             X(Float[Array, "N D"]]): Input data.
             y(Float[Array, "N Q"]]): Output data.
@@ -47,57 +50,38 @@ class Dataset(eqx.Module):
         self.y = y
 
     def __repr__(self) -> str:
-        return (
-            f"- Number of datapoints: {self.X.shape[0]}\n- Dimension: {self.X.shape[1]}"
-        )
+        """Returns a string representation of the dataset."""
+        return f"- Number of observations: {self.n}\n- Input dimension: {self.in_dim}\n- Output dimension: {self.out_dim}"
 
     def is_supervised(self) -> bool:
-        """Returns True if the dataset is supervised."""
+        """Returns `True` if the dataset is supervised."""
         return self.X is not None and self.y is not None
 
     def is_unsupervised(self) -> bool:
-        """Returns True if the dataset is unsupervised."""
+        """Returns `True` if the dataset is unsupervised."""
         return self.X is None and self.y is not None
 
-
     def __add__(self, other: Dataset) -> Dataset:
-        """Combines two datasets into one. The right-hand dataset is stacked beneath left."""
-        x = jnp.concatenate((self.X, other.X))
+        """Combine two datasets. Right hand dataset is stacked beneath the left."""
+        X = jnp.concatenate((self.X, other.X))
         y = jnp.concatenate((self.y, other.y))
 
-        return Dataset(X=x, y=y)
+        return Dataset(X=X, y=y)
 
     @property
     def n(self) -> int:
-        """The number of observations in the dataset."""
+        """Number of observations."""
         return self.X.shape[0]
 
     @property
     def in_dim(self) -> int:
-        """The dimension of the input data."""
+        """Dimension of the inputs, X."""
         return self.X.shape[1]
 
     @property
     def out_dim(self) -> int:
-        """The dimension of the output data."""
+        """Dimension of the outputs, y."""
         return self.y.shape[1]
-        
-
-def verify_dataset(ds: Dataset) -> None:
-    """Apply a series of checks to the dataset to ensure that downstream operations are safe."""
-    assert ds.X.ndim == 2, (
-        "2-dimensional training inputs are required. Current dimension:"
-        f" {ds.X.ndim}."
-    )
-    if ds.y is not None:
-        assert ds.y.ndim == 2, (
-            "2-dimensional training outputs are required. Current dimension:"
-            f" {ds.y.ndim}."
-        )
-        assert ds.X.shape[0] == ds.y.shape[0], (
-            "Number of inputs must equal the number of outputs. \nCurrent"
-            f" counts:\n- X: {ds.X.shape[0]}\n- y: {ds.y.shape[0]}"
-        )
 
 
 def _check_shape(X: Float[Array, "N D"], y: Float[Array, "N Q"]) -> None:
@@ -105,22 +89,20 @@ def _check_shape(X: Float[Array, "N D"], y: Float[Array, "N Q"]) -> None:
     if X is not None and y is not None:
         if X.shape[0] != y.shape[0]:
             raise ValueError(
-                f"X and y must have the same number of rows. Got X.shape={X.shape} and y.shape={y.shape}."
+                f"Inputs, X, and outputs, y, must have the same number of rows. Got X.shape={X.shape} and y.shape={y.shape}."
             )
-        
+
     if X is not None and X.ndim != 2:
         raise ValueError(
-            f"X must be a 2-dimensional array. Got X.ndim={X.ndim}."
+            f"Inputs, X, must be a 2-dimensional array. Got X.ndim={X.ndim}."
         )
 
     if y is not None and y.ndim != 2:
         raise ValueError(
-            f"y must be a 2-dimensional array. Got y.ndim={y.ndim}."
+            f"Outputs, y, must be a 2-dimensional array. Got y.ndim={y.ndim}."
         )
 
 
 __all__ = [
     "Dataset",
-    "slice",
-    "verify_dataset",
 ]

@@ -13,11 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-from .module import Module, param, constrain, unconstrain
+from .module import Module, constrain, param, unconstrain
 from .bijectors import Bijector, Identity, Softplus
 from .objective import Objective
-from .dataset import Dataset, verify_dataset
-from .fit import fit, get_batch
+from .dataset import Dataset
+from .fit import get_batch
 from .progress_bar import progress_bar_scan
 
 
@@ -32,19 +32,16 @@ __contributors__ = (
 )
 
 __all__ = [
-    "Module",
     "Bijector",
     "Identity",
     "Softplus",
     "Objective",
     "Dataset",
-    "verify_dataset",
+    "Module",
     "param",
-    "build_bijectors",
-    "build_trainables",
     "constrain",
     "unconstrain",
-    "fit",
+    "stop_gradients" "fit",
     "get_batch",
     "progress_bar_scan",
 ]
