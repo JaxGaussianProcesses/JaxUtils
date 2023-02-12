@@ -32,7 +32,8 @@ class _cached_static_property:
 
     Courtesy of Kernex library.
 
-    The property must not contain any dynamic leaves.
+    !!! note
+        The decorated property must *NOT* contain any dynamic attributes / PyTree leaves.
     """
 
     def __init__(self, static_property: Callable):
@@ -56,7 +57,7 @@ def _default_trainables(obj: Module) -> Module:
     tree_def_ = jtu.tree_structure(obj)
 
     def _unpack_trainables_from_meta(obj: Module) -> List[bool]:
-        """Unpack trainables from metatdata."""
+        """Unpack trainables from metatdata defined by the `param` field."""
         trainables_ = []
 
         for field_ in fields(obj):
@@ -97,7 +98,8 @@ def _default_bijectors(obj: Module) -> Module:
     tree_def_ = jtu.tree_structure(obj)
 
     def _unpack_bijectors_from_meta(obj: Module) -> List[Bijector]:
-        """Unpack bijectors from metatdata."""
+        """Unpack bijectors from metatdata defined by the `param` field."""
+
         bijectors_ = []
 
         for field_ in fields(obj):
@@ -139,8 +141,8 @@ def param(transform: Bijector, trainable: bool = True, **kwargs: Any):
     All PyTree leaves of the Module must be marked.
 
     Args:
-        transform (Bijector). The default bijector that should be should upon Module initialisation.
-        **kwargs (Any). If any are passed then they are passed on to `datacalss.field`.
+        transform (Bijector): The default bijector that should be should upon Module initialisation.
+        **kwargs (Any): If any are passed then they are passed on to `datacalss.field`.
         (Recall that JaxUtils uses dataclasses for its modules, based on Equinox's infrastructure.)
     """
     try:
@@ -153,6 +155,9 @@ def param(transform: Bijector, trainable: bool = True, **kwargs: Any):
     if "trainable" in metadata:
         raise ValueError("Cannot use metadata with `trainable` already set.")
     metadata["trainable"] = trainable
+    if "is_param" in metadata:
+        raise ValueError("Cannot use metadata with `is_param` already set.")
+    metadata["__is_param__"] = True
 
     return field(**kwargs)
 
@@ -207,17 +212,23 @@ def stop_gradients(obj: Module) -> Module:
     return jtu.tree_map(lambda *_: _stop_grad(*_), obj, obj.trainables)
 
 
-# TODO: Leaf node typing. E.g., to distiguish between boolean PyTree and one that is jax.Arrays.
-# TODO: Leaf node checking.
-
-
 class Module(eqx.Module):
     """Base Module object.
 
     This object is essentially an Equinox Module (i.e., a registered PyTree dataclass with static field markers),
     with modifications to handle bijector transformations and trainability statuses.
 
+    !!! example
+        ```python
+        class MyModule(jaxutils.Module):
+            param_a: float = jaxutils.param(jaxutils.Identity)
+            param_b: float = jaxutils.param(jaxutils.Softplus)
+        ```
+
+    All PyTree leaves of the Module must be marked with the `param` field.
     """
+
+    # TODO: Leaf node typing. E.g., to distiguish between boolean PyTree and one that is jax.Arrays.
 
     def __new__(
         cls,
@@ -238,27 +249,48 @@ class Module(eqx.Module):
             Module. An instance of the JaxUtils Module class.
         """
 
-        instance = super().__new__(cls)
-        object.__setattr__(instance, "__trainables_func__", __trainables_func__)
-        object.__setattr__(instance, "__bijectors_func__", __bijectors_func__)
+        obj = super().__new__(cls)
 
-        return instance
+        # Leaf node checking.
+        for field_ in fields(obj):
 
-    @_cached_static_property
+            if field_.metadata.get("__is_param__") is None:
+
+                if field_.metadata.get("static", False):
+                    continue
+
+                try:
+                    value_ = obj.__dict__[field_.name]
+                except KeyError:
+                    continue
+
+                if isinstance(value_, Module):
+                    continue
+
+                raise ValueError(
+                    f"Field `{field_.name}` must either be: \n- marked as a parameter via by the `param` field\n- marked as static via the `static` field metadata\n- a jaxutils.Module."
+                )
+
+        object.__setattr__(obj, "__trainables_func__", __trainables_func__)
+        object.__setattr__(obj, "__bijectors_func__", __bijectors_func__)
+
+        return obj
+
+    @_cached_static_property  # Cacheing is fine here as the trainables are static and `Module` is frozen/inmutable.
     def trainables(self) -> Module:
         """Return the boolean Module comprising trainability statuses.
 
         Returns:
-            Module. The boolean Module comprising trainability statuses for the Module.
+            Module: The boolean Module comprising trainability statuses for the Module.
         """
         return self.__trainables_func__(self)
 
-    @_cached_static_property
+    @_cached_static_property  # Cacheing is fine here as the trainables are static and `Module` is frozen/inmutable.
     def bijectors(self) -> Module:
         """Return the Bijector Module comprising transformations for parameters to and from the constrained and unconstrained spaces.
 
         Returns:
-            Module. The Bijector Module of parameter transformations.
+            Module: The Bijector Module of parameter transformations.
         """
         return self.__bijectors_func__(self)
 
@@ -266,10 +298,10 @@ class Module(eqx.Module):
         """Set parameter trainability status for the Module.
 
         Args:
-            tree (Module). The boolean tree of trainability status comprising the same tree structure as the underlying Module.
+            tree (Module): The boolean tree of trainability status comprising the same tree structure as the underlying Module.
 
         Returns:
-            Module. A new instance with the updated trainablility status tree.
+            Module: A new instance with the updated trainablility status tree.
         """
 
         if not isinstance(tree, Module):
@@ -286,10 +318,10 @@ class Module(eqx.Module):
         """Set parameter transformations for the Module.
 
         Args:
-            tree (Module). The Bijector tree of parameter transformations comprising the same tree structure as the underlying Module.
+            tree (Module): The Bijector tree of parameter transformations comprising the same tree structure as the underlying Module.
 
         Returns:
-            Module. A new instance with the updated trainablility status tree.
+            Module: A new instance with the updated trainablility status tree.
         """
 
         if not isinstance(tree, Module):

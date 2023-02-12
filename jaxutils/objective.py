@@ -19,8 +19,21 @@ import equinox as eqx
 from .dataset import Dataset
 from .module import Module
 
+
 class Objective(eqx.Module):
-    """Base class for objective functions."""
+    """Base class for objective functions.
+
+    !!! example
+        ```python
+        class MeanSquaredError(Objective):
+            def evaluate(self, model, train_data):
+                return jnp.mean((train_data.y - model(train_data.X)) ** 2)
+        ```
+
+    !!! note
+        The objective function is negated if `negative=True`.
+    """
+
     negative: bool = eqx.static_field()
     constant: float = eqx.static_field()
 
@@ -29,14 +42,14 @@ class Objective(eqx.Module):
 
         Args:
             negative(bool): Whether to negate the objective function.
-        
+
         Returns:
             Objective: An objective function.
         """
 
         if not isinstance(negative, bool):
             raise TypeError("negative must be a bool.")
-        
+
         self.negative = negative
         self.constant = -1.0 if negative else 1.0
 
@@ -47,7 +60,7 @@ class Objective(eqx.Module):
             model(Base): A model.
             *args: Additional arguments.
             **kwargs: Additional keyword arguments.
-        
+
         Returns:
             float: The objective function.
         """
