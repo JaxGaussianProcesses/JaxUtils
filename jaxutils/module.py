@@ -20,31 +20,90 @@ import jax
 from jax import lax
 
 from dataclasses import fields, field
-from typing import Any, Callable, NamedTuple
+from typing import Any, Callable, NamedTuple, Tuple
 from collections import namedtuple
 
 import equinox as eqx
 
 from .bijectors import Bijector
 
-"""NamedTuple for storing metadata (i.e., trainables and bijectors). """
+"""NamedTuple for storing transformations and trainability status metadata of `jaxutils.Module` PyTree leaves.
+
+Args:
+    trainables (Tuple[bool]): Whether the PyTree leaf is trainable.
+    bijectors (Tuple[Bijector]): The bijector that should be applied to the PyTree leaf.
+
+Example:
+    This example shows us creating a module with two parameters, and accessing the metadata of the module. 
+    This is part of the non-public API, and is not intended to be used directly by users.
+
+    >>> import jaxutils as ju
+    >>> import jax.numpy as jnp
+    >>>
+    >>> # Create a bijector for demonstration purposes.
+    >>> class Test(ju.Bijector):
+    >>>     def __init__(self):
+    >>>         self.forward = jnp.tanh
+    >>>         self.inverse = jnp.arctanh
+    >>> 
+    >>> # Create a module with two parameters.
+    >>> class MyModule(ju.Module):
+    >>>     param_a: float = ju.param(Test())
+    >>>     param_b: float = ju.param(Test())
+    >>>
+    >>>     def __call__(self, x):
+    >>>         return self.param_a * x + self.param_b
+    >>>
+    >>> module = MyModule(param_a=1.0, param_b=1.0)
+    >>>
+    >>> # The `__meta__` attribute is a `_Meta` object.
+    >>> print(module.__meta__)
+    _Meta(trainables=(True, True), bijectors=(Test(forward=<wrapped function <lambda>>, inverse=<wrapped function <lambda>>), Test(forward=<wrapped function <lambda>>, inverse=<wrapped function <lambda>>)))
+
+"""
 _Meta = namedtuple("_Meta", ["trainables", "bijectors"])
 
 
 class _cached_static_property:
     """Decorator to cache result of static immutable properties of a PyTree.
 
-    Courtesy of Kernex library.
+    Example:
 
-    !!! note
-        The decorated property must *NOT* contain any dynamic attributes / PyTree leaves.
+        This example shows us caching the result of sqauring a static float attribute of a Module.
+
+        >>> import jaxutils as ju
+        >>>
+        >>> class MyModule(ju.Module):
+        >>>     static_attribute: float = ju.static()
+
+        >>>     @_cached_static_property
+        >>>     def static_property(self):
+        >>>         return self.static_attribute ** 2
+
+    Note:
+        The decorated property must *NOT* contain any dynamic attributes / PyTree leaves,
+        i.e., any attributes referenced in the property must be marked as static.
+
+        For example, the following will break durin tracing since `self.dynamic_attribute` is not static:
+
+        >>> import jaxutils as ju
+        >>>
+        >>> class MyModule(ju.Module):
+        >>>     static_attribute: float = ju.static()
+        >>>     dynamic_attribute: float = ju.param(ju.Identity)
+        >>>
+        >>>     @_cached_static_property
+        >>>     def static_property(self):
+        >>>         return self.static_attribute ** 2 + self.dynamic_attribute
     """
 
     def __init__(self, static_property: Callable):
+        """Here we store the name of the property and the function itself."""
         self.name = static_property.__name__
         self.func = static_property
 
     def __get__(self, instance, owner):
+        """Here we cache the result of the property function, by overwriting the attribute with the result."""
         attr = self.func(instance)
         object.__setattr__(instance, self.name, attr)
         return attr
@@ -53,20 +112,56 @@ class _cached_static_property:
 def param(transform: Bijector, trainable: bool = True, **kwargs: Any):
     """Used for marking default parameter transformations.
 
-    !!! example
+    All PyTree leaves of the `jaxutils.Module` must be marked by this function, `jaxutils.static`, or must be of type `jaxutils.Module`.
 
-        ```python
-        class MyModule(jaxutils.Module):
-            param_a: float = jaxutils.param(jaxutils.Identity)
-            param_b: float = jaxutils.param(jaxutils.Softplus)
-        ```
+    Example:
+        This example shows us creating a module with two parameters, with differing transformations and trainability statuses.
 
-    All PyTree leaves of the Module must be marked.
+        >>> import jaxutils as ju
+        >>> import jax.numpy as jnp
+        >>>
+        >>> class MyModule(ju.Module):
+        >>>     param_a: float = ju.param(ju.Identity, trainable=True)
+        >>>     param_b: float = ju.param(ju.Softplus, trainable=False)
+        >>>
+        >>>     def __call__(self, x):
+        >>>         return self.param_a * x + self.param_b
+        >>>
+        >>> module = MyModule(param_a=1.0, param_b=1.0)
+
+        We can access the trainability status of the parameters using the `trainables` property.
+
+        >>> # Print the trainability status PyTree
+        >>> print(module.trainables)
+        LinearModel(weight=True, bias=True)
+
+        And we can access the bijectors of the parameters using the `bijectors` property.
+
+        >>> # Print the bijectors of the PyTree
+        >>> print(module.bijectors)
+        LinearModel(
+            weight=Bijector(forward=<function <lambda>>, inverse=<function <lambda>>),
+            bias=Bijector(forward=<function <lambda>>, inverse=<function <lambda>>)
+            )
+
+        Under the hood, the `param` function is used to create a `dataclasses.field` object with the `transform` and `trainable` metadata set,
+        which is then used to initialise the non-public and static `Module.__meta__` attribute.
+
+        >>> # Print the trainability status leaves from the `__meta__` attribute.
+        >>> print(module.__meta__.trainables)
+        (True, False)
+        >>>
+        >>> # Print the bijectors of the leaves from the `__meta__` attribute.
+        >>> print(module.__meta__.bijectors)
+        (Identity(forward=<wrapped function <lambda>>, inverse=<wrapped function <lambda>>), Softplus(forward=<wrapped function <lambda>>, inverse=<wrapped function <lambda>>))
 
     Args:
         transform (Bijector): The default bijector that should be should upon Module initialisation.
         **kwargs (Any): If any are passed then they are passed on to `datacalss.field`.
         (Recall that JaxUtils uses dataclasses for its modules, based on Equinox's infrastructure.)
+
+    Returns:
+        A `dataclasses.field` object with the `transform` and `trainable` metadata set.
     """
     try:
         metadata = dict(kwargs["metadata"])
@@ -91,18 +186,39 @@ def static(**kwargs: Any):
     Used for marking that a field should _not_ be treated as a leaf of the PyTree
     of a `jaxutils.Module`/ `equinox.Module`. (And is instead treated as part of the structure, i.e.
     as extra metadata.)
-    !!! example
-        ```python
-        class MyModule(jaxutils.Module):
-            normal_field: int
-            static_field: int = equinox.static_field()
-        mymodule = MyModule("normal", "static")
-        leaves, treedef = jtu.tree_flatten(mymodule)
-        assert leaves == ["normal"]
-        assert "static" in str(treedef)
-        ```
+
+    Example:
+        This example shows us creating a module with a static field, and then flattening the module.
+
+        >>> import jaxutils as ju
+        >>>
+        >>> class MyModule(ju.Module):
+        >>>     normal_field: int
+        >>>     static_field: int = ju.static()
+        >>>
+        >>> mymodule = MyModule("normal", "static")
+        >>> leaves, treedef = jax.tree_flatten(mymodule)
+        >>> print(leaves)
+        ['normal']
+        >>> print(treedef)
+        PyTreeDef(<class 'jaxutils.module.MyModule'>, {'static_field': *})
+        >>>
+        >>> # The same example using `equinox.static_field`
+        >>> import equinox as eq
+        >>>
+        >>> class MyModule(ju.Module):
+        >>>     normal_field: int
+        >>>     static_field: int = eq.static_field()
+        >>>
+        >>> mymodule = MyModule("normal", "static")
+        >>> leaves, treedef = jax.tree_flatten(mymodule)
+        >>> print(leaves)
+        ['normal']
+        >>> print(treedef)
+        PyTreeDef(<class 'jaxutils.module.MyModule'>, {'static_field': *})
+
     Args:
-     **kwargs (Any): If any are passed then they are passed on to `datacalss.field`.
+        **kwargs (Any): If any are passed then they are passed on to `dataclass.field`.
         (Recall that JaxUtils uses dataclasses for its modules, based on Equinox's infrastructure.)
     """
     try:
@@ -116,9 +232,34 @@ def static(**kwargs: Any):
 
 
 def constrain(obj: Module) -> Module:
-    """
-    Transform model parameters to the constrained space for corresponding
-    bijectors.
+    """Transform model parameters to the constrained space according to their defined bijectors.
+
+    Example:
+        This example shows us creating a module with two parameters, with differing transformations and trainability statuses.
+
+        >>> import jaxutils as ju
+        >>> import jax.numpy as jnp
+        >>>
+        >>> class MyModule(ju.Module):
+        >>>     param_a: float = ju.param(ju.Identity, trainable=True)
+        >>>     param_b: float = ju.param(ju.Softplus, trainable=False)
+        >>>
+        >>>     def __call__(self, x):
+        >>>         return self.param_a * x + self.param_b
+        >>>
+        >>> module = MyModule(param_a=1.0, param_b=1.0)
+
+        We can constrain the parameters using the `constrain` function.
+
+        >>> constrained_module = ju.constrain(module)
+        >>> print(constrained_module)
+        MyModule(param_a=1.0, param_b=0.0)
+
+        And we can unconstrain the parameters using the `unconstrain` function.
+
+        >>> unconstrained_module = ju.unconstrain(constrained_module)
+        >>> print(unconstrained_module)
+        MyModule(param_a=1.0, param_b=1.0)
 
     Args:
         obj (Module): The PyTree object whoose leaves are to be transformed.
@@ -132,9 +273,34 @@ def constrain(obj: Module) -> Module:
 
 
 def unconstrain(obj: Module) -> Module:
-    """
-    Transform model parameters to the unconstrained space for corresponding
-    bijectors.
+    """Transform model parameters to the unconstrained space according to their defined bijectors.
+
+    Example:
+        This example shows us creating a module with two parameters, with differing transformations and trainability statuses.
+
+        >>> import jaxutils as ju
+        >>> import jax.numpy as jnp
+        >>>
+        >>> class MyModule(ju.Module):
+        >>>     param_a: float = ju.param(ju.Identity, trainable=True)
+        >>>     param_b: float = ju.param(ju.Softplus, trainable=False)
+        >>>
+        >>>     def __call__(self, x):
+        >>>         return self.param_a * x + self.param_b
+        >>>
+        >>> module = MyModule(param_a=1.0, param_b=1.0)
+
+        We can constrain the parameters using the `constrain` function.
+
+        >>> constrained_module = ju.constrain(module)
+        >>> print(constrained_module)
+        MyModule(param_a=1.0, param_b=0.0)
+
+        And we can unconstrain the parameters using the `unconstrain` function.
+
+        >>> unconstrained_module = ju.unconstrain(constrained_module)
+        >>> print(unconstrained_module)
+        MyModule(param_a=1.0, param_b=1.0)
 
     Args:
         obj (Module): The PyTree object whoose leaves are to be transformed.
@@ -150,7 +316,33 @@ def unconstrain(obj: Module) -> Module:
 def stop_gradients(obj: Module) -> Module:
     """
     Stop the gradients flowing through parameters whose trainable status is
-    False.
+    False. This is useful for stopping parameters from being updated during training.
+
+    Example:
+        This example shows us creating a module with two parameters, with differing transformations and trainability statuses.
+
+        >>> import jaxutils as ju
+        >>> import jax.numpy as jnp
+        >>>
+        >>> class MyModule(ju.Module):
+        >>>     param_a: float = ju.param(ju.Identity, trainable=True)
+        >>>     param_b: float = ju.param(ju.Softplus, trainable=False)
+        >>>
+        >>>     def __call__(self, x):
+        >>>         return self.param_a * x + self.param_b
+
+        We now create a dummy objective function and check the gradients of the parameters.
+
+        >>> module = MyModule(param_a=5.0, param_b=7.0)
+        >>> def dummy_objective(module, x):
+        ...     module = ju.stop_gradients(module) # Stop gradients flowing through `param_b`
+        ...     return jnp.sum(module(x))
+        >>> g = jax.grad(dummy_objective)(module, 1.0)
+
+        We can see that the gradient of `param_a` is 1.0, but the gradient of `param_b` is 0.0, as expected.
+
+        >>> print(g.param_a, g.param_b)
+        1.0 0.0
 
     Args:
         obj (Module): PyTree object to stop gradients for.
@@ -160,13 +352,41 @@ def stop_gradients(obj: Module) -> Module:
     """
 
     def _stop_grad(leaf: jax.Array, trainable: bool) -> jax.Array:
+        """Stop gradients flowing through a given leaf if it is not trainable."""
         return lax.cond(trainable, lambda x: x, lax.stop_gradient, leaf)
 
     return jtu.tree_map(lambda *_: _stop_grad(*_), obj, obj.trainables)
 
 
 def _unpack_meta(obj: Module) -> NamedTuple:
-    """Unpack metadata (i.e., trainables and bijectors) defined by the `param` field.
+    """Unpack trainable and tranformation metadata defined by the `jaxutils.param` field of a `jaxutils.Module`.
+
+    This is used to build the leaves of the `trainables` and `bijectors` attributes defined in the `__meta__` attribute of a `jaxutils.Module`, during class instantiation.
+
+    Example:
+        This example shows us creating a module with two parameters, with differing transformations and trainability statuses.
+
+        >>> import jaxutils as ju
+        >>> import jax.numpy as jnp
+        >>>
+        >>> class MyModule(ju.Module):
+        >>>     param_a: float = ju.param(ju.Identity, trainable=True)
+        >>>     param_b: float = ju.param(ju.Softplus, trainable=False)
+        >>>
+        >>>     def __call__(self, x):
+        >>>         return self.param_a * x + self.param_b
+        >>>
+        >>> module = MyModule(param_a=1.0, param_b=1.0)
+
+        We unpack the metadata from the `param` fields using the `_unpack_meta` function.
+
+        >>> meta_named_tuple = _unpack_meta(module)
+        >>> print(meta_named_tuple)
+        _Meta(trainables=(True, False), bijectors=(Bijector(forward=<function <lambda>>, inverse=<function <lambda>>), Bijector(forward=<function <lambda>>, inverse=<function <lambda>>)))
+
+        We can see this is equivalent to the `__meta__` attribute of the module.
+        >>> assert meta_named_tuple == module.__meta__
+        True
 
     Args:
         obj (Module): The PyTree object whoose leaves are to be transformed.
@@ -199,7 +419,7 @@ def _unpack_meta(obj: Module) -> NamedTuple:
             f"Field `{field_.name}` must either be: \n- marked as a parameter via by the `param` field\n- marked as static via the `static` field metadata\n- a jaxutils.Module."
         )
 
-    return _Meta(trainables, bijectors)
+    return _Meta(tuple(trainables), tuple(bijectors))
 
 
 class Module(eqx.Module):
@@ -208,14 +428,24 @@ class Module(eqx.Module):
     This object is essentially an Equinox Module (i.e., a registered PyTree dataclass with static field markers),
     with modifications to handle bijector transformations and trainability statuses.
 
-    !!! example
-        ```python
-        class MyModule(jaxutils.Module):
-            param_a: float = jaxutils.param(jaxutils.Identity)
-            param_b: float = jaxutils.param(jaxutils.Softplus)
-        ```
+    Example:
 
-    All PyTree leaves of the Module must be marked with the `param` field.
+        TODO: More thorough example.
+
+        This example shows us creating a module with two parameters, with differing transformations and trainability statuses.
+
+        >>> import jaxutils as ju
+        >>> import jax.numpy as jnp
+        >>>
+        >>> class MyModule(ju.Module):
+        >>>     param_a: float = ju.param(ju.Identity, trainable=True)
+        >>>     param_b: float = ju.param(ju.Softplus, trainable=False)
+        >>>
+        >>>     def __call__(self, x):
+        >>>         return self.param_a * x + self.param_b
+
+    Note:
+        All attributes of the Module must be marked with either a `param` or `static` field or the attributes type needs to be subclass of `jaxutils.Module`.
     """
 
     def __new__(
@@ -227,12 +457,12 @@ class Module(eqx.Module):
         """This method is defined to set the `__meta__` attribute (as we are working with frozen dataclasses!).
 
         Args:
-            __meta__ (_Meta.) Metadata that define the models' trainables and bijectors PyTree leaves.
-            *args (Any). Arguments.
-            **kwargs (Any). Keyword arguments.
+            __meta__ (_Meta): Metadata that defines the Module's trainables and bijectors PyTree leaves.
+            *args (Any): Arguments.
+            **kwargs (Any): Keyword arguments.
 
         Returns:
-            Module. An instance of the JaxUtils Module class.
+            Module. An instance of the `jaxutils.Module`.
         """
         obj = super().__new__(cls)
         if __meta__ is None:
@@ -261,6 +491,9 @@ class Module(eqx.Module):
     def set_trainables(self, tree: Module) -> Module:
         """Set parameter trainability status for the Module.
 
+        Example:
+            TODO!
+
         Args:
             tree (Module): The boolean tree of trainability status comprising the same tree structure as the underlying Module.
 
@@ -280,6 +513,9 @@ class Module(eqx.Module):
 
     def set_bijectors(self, tree: Module) -> Module:
         """Set parameter transformations for the Module.
+
+        Example:
+            TODO!
 
         Args:
             tree (Module): The bijector tree of parameter transformations comprising the same tree structure as the underlying Module.
@@ -303,8 +539,19 @@ class Module(eqx.Module):
             trainables=self.__meta__.trainables, bijectors=jtu.tree_leaves(tree)
         )
 
-    def __update_meta__(self, trainables, bijectors) -> Module:
-        """Update Module meta through a new instance."""
+    def __update_meta__(self, trainables: Tuple, bijectors: Tuple) -> Module:
+        """Update Module meta through a new instance.
+
+        Example:
+            TODO!
+
+        Args:
+            trainables (Tuple): The new leaves of the trainables PyTree.
+            bijectors (Tuple): The new leaves of the bijectors PyTree.
+
+        Returns:
+            Module: A new instance of the Module with updated meta.
+        """
         new = self.__class__.__new__(
             cls=self.__class__, __meta__=_Meta(trainables, bijectors)
         )
@@ -314,8 +561,12 @@ class Module(eqx.Module):
 
         return new
 
-    def tree_flatten(self):
-        """Identical to that of Equinox, except for the addition of the `meta` component."""
+    def tree_flatten(self) -> Tuple[Tuple, Tuple]:
+        """Identical to that of Equinox, except for the addition of a meta component.
+
+        Returns:
+            Tuple: A tuple of the Module's dynamic and static fields.
+        """
         dynamic_field_names = []
         dynamic_field_values = []
         static_field_names = []
@@ -343,9 +594,16 @@ class Module(eqx.Module):
         )
 
     @classmethod
-    def tree_unflatten(cls, aux, dynamic_field_values):
-        """Identical to that of Equinox, except for the addition of the `meta` component."""
+    def tree_unflatten(cls, aux: Tuple, dynamic_field_values: Tuple) -> Module:
+        """Identical to that of Equinox, except for the addition of a meta component.
 
+        Args:
+            aux (Tuple): Auxiliary data.
+            dynamic_field_values (Tuple): Dynamic field values.
+
+        Returns:
+            Module: An instance of the `jaxutils.Module` class.
+        """
         dynamic_field_names, static_field_names, static_field_values, meta = aux
 
         self = cls.__new__(cls=cls, __meta__=_Meta(*meta))
@@ -353,7 +611,6 @@ class Module(eqx.Module):
             object.__setattr__(self, name, value)
         for name, value in zip(static_field_names, static_field_values):
             object.__setattr__(self, name, value)
-
         return self
 
 

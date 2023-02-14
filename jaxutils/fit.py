@@ -48,56 +48,38 @@ def fit(
 ) -> Tuple[Module, Array]:
     """Train a Module model with respect to a supplied Objective function. Optimisers used here should originate from Optax.
 
-    !!! example
-        ```python
-        import jax.numpy as jnp
-        import jaxutils as ju
-        import optax as ox
-
-        # (1) Create a dataset:
-        X = jnp.linspace(0.0, 10.0, 100).reshape(-1, 1)
-        y = 2.0 * X + 1.0 + 10 * jr.normal(jr.PRNGKey(0), X.shape).reshape(-1, 1)
-        D = ju.Dataset(X, y)
-
-        # (2) Define your model:
-        class LinearModel(ju.Module):
-            weight: float = ju.param(transform=ju.Identity, trainable=True)
-            bias: float = ju.param(transform=ju.Identity, trainable=True)
-
-            def __call__(self, x):
-                return self.weight * x + self.bias
-
-        model = LinearModel(weight=1.0, bias=1.0)
-
-        # (3) Define your loss function:
-        class MeanSqaureError(Objective):
-            def evaluate(self, model: LinearModel, train_data: ju.Dataset) -> float:
-                y_pred = model(train_data.X)
-                return jnp.mean((y_pred - train_data.y) ** 2)
-
-        loss = MeanSqaureError()
-
-        # (4) Define your optimiser:
-        optim = ox.adam(1e-3)
-
-        # (5) Train your model:
-        model, history = ju.fit(model=model, objective=loss, train_data=D, optim=optim, num_iters=1000)
-
-        # (6) Plot the training history:
-        import matplotlib.pyplot as plt
-        plt.plot(history)
-        plt.show()
-
-        # (7) Plot the model predictions:
-        X_test = jnp.linspace(0.0, 10.0, 1000).reshape(-1, 1)
-        y_test = model(X_test)
-        plt.plot(X_test, y_test)
-        plt.scatter(D.X, D.y)
-        plt.show()
-
-        # (8) Print the final model parameters:
-        print(model)
-        ```
+    Example:
+        >>> import jax.numpy as jnp
+        >>> import jax.random as jr
+        >>> import optax as ox
+        >>> import jaxutils as ju
+        >>>
+        >>> # (1) Create a dataset:
+        >>> X = jnp.linspace(0.0, 10.0, 100)[:, None]
+        >>> y = 2.0 * X + 1.0 + 10 * jr.normal(jr.PRNGKey(0), X.shape)
+        >>> D = ju.Dataset(X, y)
+        >>>
+        >>> # (2) Define your model:
+        >>> class LinearModel(ju.Module):
+        ...     weight: float = ju.param(ju.Identity)
+        ...     bias: float = ju.param(ju.Identity)
+        ...
+        ...     def __call__(self, x):
+        ...         return self.weight * x + self.bias
+        ...
+        >>> model = LinearModel(weight=1.0, bias=1.0)
+        >>>
+        >>> # (3) Define your loss function:
+        >>> class MeanSqaureError(ju.Objective):
+        ...     def evaluate(self, model: LinearModel, train_data: ju.Dataset) -> float:
+        ...         return jnp.mean((train_data.y - model(train_data.X)) ** 2)
+        ...
+        >>> loss = MeanSqaureError()
+        >>>
+        >>> # (4) Train!
+        >>> trained_model, history = ju.fit(
+        ...     model=model, objective=loss, train_data=D, optim=ox.sgd(0.001), num_iters=1000
+        ... )
 
     Args:
         model (Module): The model Module to be optimised.

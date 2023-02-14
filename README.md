@@ -8,19 +8,19 @@
 # Contents
 
 - [Overview](#overview)
+- [Module] (#)
 - [Dataset](#dataset)
 
 # Overview
 
-## ...
+`JaxUtils` is designed....
 
-## ...
 
 ## Linear Model example.
 
 We fit a simple one-dimensional linear regression model with a `weight` and a `bias` parameter.
 
-### (1) Ceate a dataset
+### (1) Dataset
 
 ```python
 # Import dependancies.
@@ -28,7 +28,7 @@ import jaxutils as ju
 import jax.numpy as jnp
 import jax.random as jr
 import optax as ox
-
+import matplotlib.pyplot as plt
 
 # Simulate labels.
 key = jr.PRNGKey(42)
@@ -39,10 +39,9 @@ y = 2.0 * X + 1.0 + jr.normal(key, X.shape)
 D = ju.Dataset(X, y)
 ```
 
-### (2) Define your model
+### (2) Model
 
 A model is defined through inheriting from the `JaxUtils`'s `Module` object. 
-
 ```python
 class LinearModel(ju.Module):
     weight: float =  ju.param(ju.Identity)
@@ -53,36 +52,27 @@ class LinearModel(ju.Module):
 
 model = LinearModel(weight=1.0, bias=1.0)
 ```
-
 The parameters are marked via the `param` field, whose argument is the default `Bijector` transformation for mapping the parameters to the unconstrained space for optimisation. In this case both of our `weight` and `bias` parameters are defined on the reals, so we use the `Identity` transform. Just like in typicall `Equinox` code, we can (optionally) define a foward pass of the model through the `__call__` method.
 
+### (3) Objective
 
-
-### (3) Define your objective
-
-We can define any objective function, such as the mean-square-error, via inheriting from the `Objective` object as follows.
-
+We can define any objective function, such as the mean squared error, via inheriting from the `Objective` object as follows.
 ```python
-class MeanSqaureError(ju.Objective):
+class MeanSquaredError(ju.Objective):
 
     def evaluate(self, model: LinearModel, train_data: ju.Dataset) -> float:
-        return jnp.sum((train_data.y - model(train_data.X)) ** 2)
+        return jnp.mean((train_data.y - model(train_data.X)) ** 2)
 
-loss = MeanSqaureError()
+loss = MeanSquaredError()
 ```
 
 ### (4) Train!
 
 We are now ready to train our model. This can simply be done using the `fit` callable.
-
 ```python
 # Optimisation loop.
-model, hist = ju.fit(model, loss, D, ox.sgd(0.0001), 10000)
-
-# Print parameter values.
-print(model.weight, model.bias)
+model, hist = ju.fit(model=model, objective=loss, train_data=D, optim=optim, num_iters=1000)
 ```
-
 
 
 # Dataset
