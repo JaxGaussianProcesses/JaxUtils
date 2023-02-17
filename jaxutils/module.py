@@ -450,8 +450,8 @@ class Module(eqx.Module):
 
     def __new__(
         cls,
-        __meta__: _Meta = None,
         *args: Any,
+        __meta__: _Meta = None,
         **kwargs: Any,
     ) -> Module:
         """This method is defined to set the `__meta__` attribute (as we are working with frozen dataclasses!).
