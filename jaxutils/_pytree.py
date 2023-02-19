@@ -16,7 +16,7 @@
 """This non-public module defines PyTree node updating functionality for the `jaxutils.Module` via the `jax.numpy` e.g. `.at` and `.set` syntax."""
 
 from __future__ import annotations
-from typing import Any, Sequence, Callable, Union
+from typing import Any, Sequence, Callable, Union, Iterable
 from jaxtyping import PyTree
 from equinox import tree_at
 
@@ -70,7 +70,7 @@ class _PyTreeUpdateHelper:
 
     def __getitem__(self, where: Union[Callable, Sequence[str], Ellipsis]):
 
-        if isinstance(where, list) | isinstance(where, str):
+        if isinstance(where, Iterable) | isinstance(where, str):
 
             def _to_path(lst: list):
                 return "".join(

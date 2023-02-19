@@ -382,12 +382,12 @@ def _default_meta_func(obj: Module):
     ):
 
         if isinstance(node_, Module):
-            for trainable, bijector in zip(*_default_meta_func(field_.type)):
+            for trainable, bijector in zip(*_default_meta_func(node_)):
                 trainables.append(trainable)
                 bijectors.append(bijector)
             continue
 
-        if isinstance(node_, list) or isinstance(node_, tuple):
+        if isinstance(node_, list) | isinstance(node_, tuple):
             for item in node_:
                 for trainable, bijector in zip(*_default_meta_func(item)):
                     trainables.append(trainable)
@@ -598,7 +598,7 @@ class Module(equinox.Module):
             tuple(dynamic_field_names),
             tuple(static_field_names),
             tuple(static_field_values),
-            self.__meta__,
+            tuple(self.__meta__),
         )
 
     @classmethod
@@ -629,6 +629,15 @@ class Module(equinox.Module):
     @property
     def at(self):
         return _PyTreeUpdateHelper(pytree=self)
+
+    def constrain(self):
+        return constrain(self)
+
+    def unconstrain(self):
+        return unconstrain(self)
+
+    def stop_gradients(self):
+        return stop_gradients(self)
 
 
 # __all__ = [
