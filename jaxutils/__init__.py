@@ -13,12 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-from .module import Module, constrain, param, unconstrain, stop_gradients
+from .module import Module, constrain, param, static, unconstrain, stop_gradients
 from .bijectors import Bijector, Identity, Softplus
 from .objective import Objective
 from .dataset import Dataset
 from .fit import fit, get_batch
-from .progress_bar import progress_bar
+from .scan import vscan
 
 
 __authors__ = "Thomas Pinder, Daniel Dodd"
@@ -39,12 +39,13 @@ __all__ = [
     "Dataset",
     "Module",
     "param",
+    "static",
     "constrain",
     "unconstrain",
     "stop_gradients",
     "fit",
     "get_batch",
-    "progress_bar",
+    "vscan",
 ]
 
 from . import _version

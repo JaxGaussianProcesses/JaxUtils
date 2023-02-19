@@ -8,10 +8,16 @@
 # Contents
 
 - [Overview](#overview)
-- [Module] (#)
+- [Module] (#module)
+- [Objective] (#objective)
+- [Vscan] (#vscan)
+- [Fit] (#fit)
+- [Bijectors](#bijectors)
 - [Dataset](#dataset)
 
 # Overview
+
+## Linear Model example.
 
 `JaxUtils` is designed....
 
@@ -79,7 +85,7 @@ model, hist = ju.fit(model=model, objective=loss, train_data=D, optim=optim, num
 
 ## Overview
 
-`jaxutils.Dataset` is a datset abstraction. In future, we wish to extend this to a heterotopic and isotopic data abstraction.
+`jaxutils.Dataset` is a dataset abstraction.
 
 ## Example
 

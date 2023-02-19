@@ -16,7 +16,6 @@
 from typing import Optional, Tuple
 
 import jax
-import jax.numpy as jnp
 import jax.random as jr
 import optax as ox
 
@@ -30,7 +29,7 @@ from .module import Module, constrain, unconstrain, stop_gradients
 from .dataset import Dataset
 from .bijectors import Bijector
 from .objective import Objective
-from .progress_bar import progress_bar
+from .scan import vscan
 
 
 def fit(
@@ -120,13 +119,11 @@ def fit(
     # Initialise optimiser state.
     state = optim.init(model)
 
-    # Mini-batch random keys and iteration loop numbers to scan over.
+    # Mini-batch random keys to scan over.
     iter_keys = jr.split(key, num_iters)
-    iter_nums = jnp.arange(num_iters)
 
     # Optimisation step.
-    def step(carry, iter_num__and__key):
-        _, key = iter_num__and__key
+    def step(carry, key):
         model, opt_state = carry
 
         if batch_size != -1:
@@ -141,14 +138,11 @@ def fit(
         carry = model, opt_state
         return carry, loss_val
 
-    # Progress bar, if verbose True.
-    if verbose:
-        step = progress_bar(num_iters, log_rate)(step)
+    # Optimisation scan.
+    scan = vscan if verbose else jax.lax.scan
 
     # Optimisation loop.
-    (model, _), history = jax.lax.scan(
-        step, (model, state), (iter_nums, iter_keys), unroll=unroll
-    )
+    (model, _), history = scan(step, (model, state), (iter_keys), unroll=unroll)
 
     # Constrained space.
     model = constrain(model)
