@@ -20,12 +20,15 @@ import jax
 from jax import lax
 
 from dataclasses import fields, field
-from typing import Any, Callable, NamedTuple, Tuple
+from typing import Any, Callable, Tuple
 from collections import namedtuple
 
-import equinox as eqx
+from ._pytree import _PyTreeUpdateHelper
+import equinox
 
 from .bijectors import Bijector
+
+Distribution = Any
 
 """NamedTuple for storing transformations and trainability status metadata of `jaxutils.Module` PyTree leaves.
 
@@ -109,7 +112,12 @@ class _cached_static_property:
         return attr
 
 
-def param(transform: Bijector, trainable: bool = True, **kwargs: Any):
+def param(
+    transform: Bijector,
+    trainable: bool = True,
+    prior: Distribution = None,
+    **kwargs: Any,
+):
     """Used for marking default parameter transformations.
 
     All PyTree leaves of the `jaxutils.Module` must be marked by this function, `jaxutils.static`, or must be of type `jaxutils.Module`.
@@ -163,6 +171,9 @@ def param(transform: Bijector, trainable: bool = True, **kwargs: Any):
     Returns:
         A `dataclasses.field` object with the `transform` and `trainable` metadata set.
     """
+
+    # TODO: Type check.
+
     try:
         metadata = dict(kwargs["metadata"])
     except KeyError:
@@ -173,6 +184,9 @@ def param(transform: Bijector, trainable: bool = True, **kwargs: Any):
     if "trainable" in metadata:
         raise ValueError("Cannot use metadata with `trainable` already set.")
     metadata["trainable"] = trainable
+    if "prior" in metadata:
+        raise ValueError("Cannot use metadata with `prior` already set.")
+    metadata["prior"] = prior
     if "param" in metadata:
         raise ValueError("Cannot use metadata with `param` already set.")
     metadata["param"] = True
@@ -358,50 +372,26 @@ def stop_gradients(obj: Module) -> Module:
     return jtu.tree_map(lambda *_: _stop_grad(*_), obj, obj.trainables)
 
 
-def _unpack_meta(obj: Module) -> NamedTuple:
-    """Unpack trainable and tranformation metadata defined by the `jaxutils.param` field of a `jaxutils.Module`.
-
-    This is used to build the leaves of the `trainables` and `bijectors` attributes defined in the `__meta__` attribute of a `jaxutils.Module`, during class instantiation.
-
-    Example:
-        This example shows us creating a module with two parameters, with differing transformations and trainability statuses.
-
-        >>> import jaxutils as ju
-        >>> import jax.numpy as jnp
-        >>>
-        >>> class MyModule(ju.Module):
-        >>>     param_a: float = ju.param(ju.Identity, trainable=True)
-        >>>     param_b: float = ju.param(ju.Softplus, trainable=False)
-        >>>
-        >>>     def __call__(self, x):
-        >>>         return self.param_a * x + self.param_b
-        >>>
-        >>> module = MyModule(param_a=1.0, param_b=1.0)
-
-        We unpack the metadata from the `param` fields using the `_unpack_meta` function.
-
-        >>> meta_named_tuple = _unpack_meta(module)
-        >>> print(meta_named_tuple)
-        _Meta(trainables=(True, False), bijectors=(Bijector(forward=<function <lambda>>, inverse=<function <lambda>>), Bijector(forward=<function <lambda>>, inverse=<function <lambda>>)))
-
-        We can see this is equivalent to the `__meta__` attribute of the module.
-        >>> assert meta_named_tuple == module.__meta__
-        True
-
-    Args:
-        obj (Module): The PyTree object whoose leaves are to be transformed.
-
-    Returns:
-        NamedTuple: A namedtuple with fields `trainables` and `bijectors`.
-
-    Raises:
-        ValueError: If a leaf is not marked as a parameter and its type is not a subclass of `Module`.
-    """
+def _default_meta_func(obj: Module):
     trainables, bijectors = [], []
 
-    for field_ in fields(obj):
+    for field_, node_ in (
+        [f, getattr(obj, f.name)]
+        for f in obj.__dataclass_fields__.values()
+        if not f.metadata.get("static", False)
+    ):
 
-        if field_.metadata.get("static", False):
+        if isinstance(node_, Module):
+            for trainable, bijector in zip(*_default_meta_func(field_.type)):
+                trainables.append(trainable)
+                bijectors.append(bijector)
+            continue
+
+        if isinstance(node_, list) or isinstance(node_, tuple):
+            for item in node_:
+                for trainable, bijector in zip(*_default_meta_func(item)):
+                    trainables.append(trainable)
+                    bijectors.append(bijector)
             continue
 
         if field_.metadata.get("param", False):
@@ -409,20 +399,14 @@ def _unpack_meta(obj: Module) -> NamedTuple:
             bijectors.append(field_.metadata["transform"])
             continue
 
-        if issubclass(field_.type, Module):
-            for trainable, bijector in zip(*_unpack_meta(field_.type)):
-                trainables.append(trainable)
-                bijectors.append(bijector)
-            continue
-
         raise ValueError(
             f"Field `{field_.name}` must either be: \n- marked as a parameter via by the `param` field\n- marked as static via the `static` field metadata\n- a jaxutils.Module."
         )
 
-    return _Meta(tuple(trainables), tuple(bijectors))
+    return tuple(trainables), tuple(bijectors)
 
 
-class Module(eqx.Module):
+class Module(equinox.Module):
     """Base Module object.
 
     This object is essentially an Equinox Module (i.e., a registered PyTree dataclass with static field markers),
@@ -451,7 +435,7 @@ class Module(eqx.Module):
     def __new__(
         cls,
         *args: Any,
-        __meta__: _Meta = None,
+        __meta_func__=None,
         **kwargs: Any,
     ) -> Module:
         """This method is defined to set the `__meta__` attribute (as we are working with frozen dataclasses!).
@@ -465,10 +449,21 @@ class Module(eqx.Module):
             Module. An instance of the `jaxutils.Module`.
         """
         obj = super().__new__(cls)
-        if __meta__ is None:
-            __meta__ = _unpack_meta(obj)
-        object.__setattr__(obj, "__meta__", __meta__)
+
+        if __meta_func__ is None:
+            __meta_func__ = _default_meta_func
+
+        object.__setattr__(obj, "__meta_func__", __meta_func__)
         return obj
+
+    @_cached_static_property
+    def __meta__(self) -> _Meta:
+        """Return the metadata for the Module.
+
+        Returns:
+            _Meta: The metadata for the Module.
+        """
+        return _Meta(*self.__meta_func__(self))
 
     @_cached_static_property  # Caching fine here since `trainables` are static and `Module` is frozen/inmutable.
     def trainables(self) -> Module:
@@ -507,8 +502,8 @@ class Module(eqx.Module):
         if not jtu.tree_structure(tree) == jtu.tree_structure(self):
             raise ValueError("Tree must have the same structure as the Module.")
 
-        return self.__update_meta__(
-            trainables=jtu.tree_leaves(tree), bijectors=self.__meta__.bijectors
+        return self.__set_meta__(
+            _Meta(trainables=jtu.tree_leaves(tree), bijectors=self.__meta__.bijectors)
         )
 
     def set_bijectors(self, tree: Module) -> Module:
@@ -535,12 +530,23 @@ class Module(eqx.Module):
                 "bijectors tree must have the same structure as the Module."
             )
 
-        return self.__update_meta__(
-            trainables=self.__meta__.trainables, bijectors=jtu.tree_leaves(tree)
+        return self.__set_meta__(
+            _Meta(trainables=self.__meta__.trainables, bijectors=jtu.tree_leaves(tree))
         )
 
-    def __update_meta__(self, trainables: Tuple, bijectors: Tuple) -> Module:
-        """Update Module meta through a new instance.
+    def __set_meta__(self, __meta__: _Meta) -> Module:
+        """Set the Module's meta.
+
+        Args:
+            __meta__ (_Meta): The new meta for the Module.
+
+        Returns:
+            Module: A new instance of the Module with updated meta.
+        """
+        return self.__set_meta_func__(lambda _: __meta__)
+
+    def __set_meta_func__(self, __meta_func__: _Meta) -> Module:
+        """Set function that generates parameter meta through a new Module instance.
 
         Example:
             TODO!
@@ -552,8 +558,11 @@ class Module(eqx.Module):
         Returns:
             Module: A new instance of the Module with updated meta.
         """
-        new = self.__class__.__new__(
-            cls=self.__class__, __meta__=_Meta(trainables, bijectors)
+        cls = self.__class__
+
+        new = cls.__new__(
+            cls=cls,
+            __meta_func__=__meta_func__,
         )
 
         for field_ in fields(self):
@@ -571,7 +580,6 @@ class Module(eqx.Module):
         dynamic_field_values = []
         static_field_names = []
         static_field_values = []
-        meta = [self.__meta__.trainables, self.__meta__.bijectors]
 
         for field_ in fields(self):
             name = field_.name
@@ -590,7 +598,7 @@ class Module(eqx.Module):
             tuple(dynamic_field_names),
             tuple(static_field_names),
             tuple(static_field_values),
-            tuple(meta),
+            self.__meta__,
         )
 
     @classmethod
@@ -604,21 +612,30 @@ class Module(eqx.Module):
         Returns:
             Module: An instance of the `jaxutils.Module` class.
         """
-        dynamic_field_names, static_field_names, static_field_values, meta = aux
+        dynamic_field_names, static_field_names, static_field_values, __meta__ = aux
 
-        self = cls.__new__(cls=cls, __meta__=_Meta(*meta))
+        self = cls.__new__(
+            cls=cls,
+            __meta_func__=lambda _: __meta__,
+        )
+
         for name, value in zip(dynamic_field_names, dynamic_field_values):
             object.__setattr__(self, name, value)
         for name, value in zip(static_field_names, static_field_values):
             object.__setattr__(self, name, value)
+
         return self
 
+    @property
+    def at(self):
+        return _PyTreeUpdateHelper(pytree=self)
 
-__all__ = [
-    "Module",
-    "param",
-    "static",
-    "constrain",
-    "unconstrain",
-    "stop_gradients",
-]
+
+# __all__ = [
+#     "Module",
+#     "param",
+#     "static",
+#     "constrain",
+#     "unconstrain",
+#     "stop_gradients",
+# ]
