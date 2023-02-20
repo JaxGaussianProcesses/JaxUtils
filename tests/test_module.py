@@ -46,11 +46,11 @@ def test_module():
     )
 
     assert isinstance(tree, Module)
-    assert isinstance(tree.trainables, Module)
-    assert isinstance(tree.bijectors, Module)
+    assert isinstance(tree.trainables[...].get(), Module)
+    assert isinstance(tree.bijectors[...].get(), Module)
     assert isinstance(tree, eqx.Module)
-    assert isinstance(tree.trainables, eqx.Module)
-    assert isinstance(tree.bijectors, eqx.Module)
+    assert isinstance(tree.trainables[...].get(), eqx.Module)
+    assert isinstance(tree.bijectors[...].get(), eqx.Module)
 
     assert tree.param_a == 1.0
     assert tree.sub_tree.param_c == 2.0
@@ -59,7 +59,7 @@ def test_module():
     assert tree.param_b == 5.0
 
     # Test default bijectors
-    bijectors = tree.bijectors
+    bijectors = tree.bijectors[...].get()
     bijector_list = jtu.tree_leaves(bijectors)
 
     for b1, b2 in zip(
@@ -68,7 +68,7 @@ def test_module():
         assert b1 == b2
 
     # Test default trainables
-    trainables = tree.trainables
+    trainables = tree.trainables[...].get()
     trainable_list = jtu.tree_leaves(trainables)
 
     for t1, t2 in zip(trainable_list, [True, True, True, True, True]):
@@ -97,7 +97,7 @@ def test_module():
     _, tree_def = jtu.tree_flatten(tree)
     trainables = tree_def.unflatten([True, False, True, False, False])
 
-    new_tree = tree.set_trainables(trainables)
+    new_tree = tree.trainables[...].set(trainables)
 
     # Test stop gradients
     def loss(tree):

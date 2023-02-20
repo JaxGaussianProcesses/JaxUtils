@@ -23,14 +23,17 @@ from equinox import tree_at
 
 class _PyTreeUpdateRef:
 
-    __slots__ = ("pytree", "where")
+    __slots__ = (
+        "pytree",
+        "where",
+    )
 
     def __init__(self, pytree: PyTree, where: Union[Callable, Sequence[str]]) -> None:
         self.pytree = pytree
         self.where = where
 
     def __repr__(self) -> str:
-        return f"_IndexUpdateRef({repr(self.pytree)}, {repr(self.where)})"
+        return f"_PyTreeUpdateRef({repr(self.pytree)}, {repr(self.where)})"
 
     def get(self) -> PyTree:
         return self.where(self.pytree)
@@ -41,42 +44,29 @@ class _PyTreeUpdateRef:
     def apply(self, func: Callable) -> PyTree:
         return tree_at(where=self.where, pytree=self.pytree, replace_fn=func)
 
-    # def add(self, values):
-    #     ...
-
-    # def multiply(self, values):
-    #     ...
-
-    # def divide(self, values):
-    #     ...
-
-    # def power(self, values):
-    #     ...
-
-    # def min(self, values):
-    #     ...
-
-    # def max(self, values):
-    #     ...
-
 
 class _PyTreeUpdateHelper:
     """Helper class for updating a PyTree."""
 
     __slots__ = ("pytree",)
 
-    def __init__(self, pytree: PyTree):
+    def __init__(self, pytree: PyTree) -> None:
         self.pytree = pytree
 
-    def __getitem__(self, where: Union[Callable, Sequence[str], Ellipsis]):
+    def __getitem__(
+        self, where: Union[Callable, Sequence[str], Ellipsis]
+    ) -> _PyTreeUpdateRef:
 
-        if isinstance(where, Iterable) | isinstance(where, str):
+        if isinstance(where, str):
+            where = eval("lambda x: x." + where)
 
-            def _to_path(lst: list):
+        if isinstance(where, Iterable):
+
+            def _to_path(it: Iterable):
                 return "".join(
                     [
                         str(elem) if not isinstance(elem, str) else "." + elem
-                        for elem in lst
+                        for elem in it
                     ]
                 )
 
@@ -87,5 +77,5 @@ class _PyTreeUpdateHelper:
 
         return _PyTreeUpdateRef(self.pytree, where)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"_PyTreeUpdateHelper({repr(self.pytree)})"
