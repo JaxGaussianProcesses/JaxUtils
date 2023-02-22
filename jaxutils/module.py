@@ -307,7 +307,7 @@ def _default_meta(obj: Module) -> tuple[Dict]:
             for meta_ in _default_meta(node_):
                 meta.append(meta_)
 
-        elif isinstance(node_, list | tuple):
+        elif isinstance(node_, list) | isinstance(node_, tuple):
             for item in node_:
                 for meta_ in _default_meta(item):
                     meta.append(meta_)
