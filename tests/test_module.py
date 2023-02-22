@@ -14,7 +14,7 @@
 # ==============================================================================
 
 import jax.numpy as jnp
-from jaxutils.module import Module, constrain, param, stop_gradients, unconstrain
+from jaxutils.module import Module, constrain, param, unconstrain
 from jaxutils.bijectors import Identity, Softplus
 import jax.tree_util as jtu
 import jax
@@ -46,11 +46,11 @@ def test_module():
     )
 
     assert isinstance(tree, Module)
-    assert isinstance(tree.trainables, Module)
-    assert isinstance(tree.bijectors, Module)
+    assert isinstance(tree.meta_at[...].get("trainable"), Module)
+    assert isinstance(tree.meta_at[...].get("transform"), Module)
     assert isinstance(tree, eqx.Module)
-    assert isinstance(tree.trainables, eqx.Module)
-    assert isinstance(tree.bijectors, eqx.Module)
+    assert isinstance(tree.meta_at[...].get("trainable"), eqx.Module)
+    assert isinstance(tree.meta_at[...].get("transform"), eqx.Module)
 
     assert tree.param_a == 1.0
     assert tree.sub_tree.param_c == 2.0
@@ -59,7 +59,7 @@ def test_module():
     assert tree.param_b == 5.0
 
     # Test default bijectors
-    bijectors = tree.bijectors
+    bijectors = tree.meta_at[...].get("transform")
     bijector_list = jtu.tree_leaves(bijectors)
 
     for b1, b2 in zip(
@@ -68,7 +68,7 @@ def test_module():
         assert b1 == b2
 
     # Test default trainables
-    trainables = tree.trainables
+    trainables = tree.meta_at[...].get("trainable")
     trainable_list = jtu.tree_leaves(trainables)
 
     for t1, t2 in zip(trainable_list, [True, True, True, True, True]):
@@ -94,21 +94,20 @@ def test_module():
     ):
         assert bij.inverse(l1) == l2
 
-    _, tree_def = jtu.tree_flatten(tree)
-    trainables = tree_def.unflatten([True, False, True, False, False])
-
-    new_tree = tree.set_trainables(trainables)
+    new_tree = tree.meta_at[
+        lambda t: (t.sub_tree.param_c, t.param_b, t.sub_tree.param_e)
+    ].set(trainable=[False, False, False])
 
     # Test stop gradients
     def loss(tree):
-        tree = stop_gradients(tree)
-        return jnp.sum(
-            tree.param_a**2
-            + tree.sub_tree.param_c**2
-            + tree.sub_tree.param_d**2
-            + tree.sub_tree.param_e**2
-            + tree.param_b**2
-        )
+        with tree.stop_gradients() as t:
+            return jnp.sum(
+                t.param_a**2
+                + t.sub_tree.param_c**2
+                + t.sub_tree.param_d**2
+                + t.sub_tree.param_e**2
+                + t.param_b**2
+            )
 
     g = jax.grad(loss)(new_tree)
 
@@ -172,9 +171,9 @@ def test_tuple_attribute():
 
     tree = Tree((SubTree(), SubTree(), SubTree()))
 
-    assert len(tree.__meta__.trainables) == 9
-    assert len(tree.__meta__.bijectors) == 9
-    assert tree.__meta__.trainables == (
+    assert len([meta.get("trainable") for meta in tree.__meta__]) == 9
+    assert len([meta.get("transform") for meta in tree.__meta__]) == 9
+    assert [meta.get("trainable") for meta in tree.__meta__] == [
         True,
         True,
         False,
@@ -184,8 +183,8 @@ def test_tuple_attribute():
         True,
         True,
         False,
-    )
-    assert tree.__meta__.bijectors == (
+    ]
+    assert [meta.get("transform") for meta in tree.__meta__] == [
         Identity,
         Softplus,
         Identity,
@@ -195,7 +194,7 @@ def test_tuple_attribute():
         Identity,
         Softplus,
         Identity,
-    )
+    ]
 
 
 def test_list_attribute():
@@ -209,9 +208,9 @@ def test_list_attribute():
 
     tree = Tree([SubTree(), SubTree(), SubTree()])
 
-    assert len(tree.__meta__.trainables) == 9
-    assert len(tree.__meta__.bijectors) == 9
-    assert tree.__meta__.trainables == (
+    assert len([meta.get("trainable") for meta in tree.__meta__]) == 9
+    assert len([meta.get("transform") for meta in tree.__meta__]) == 9
+    assert [meta.get("trainable") for meta in tree.__meta__] == [
         True,
         True,
         False,
@@ -221,8 +220,8 @@ def test_list_attribute():
         True,
         True,
         False,
-    )
-    assert tree.__meta__.bijectors == (
+    ]
+    assert [meta.get("transform") for meta in tree.__meta__] == [
         Identity,
         Softplus,
         Identity,
@@ -232,7 +231,7 @@ def test_list_attribute():
         Identity,
         Softplus,
         Identity,
-    )
+    ]
 
 
 def test_module_not_enough_attributes():
