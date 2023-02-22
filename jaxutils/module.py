@@ -26,6 +26,7 @@ from .bijectors import Bijector, Identity
 from .distributions import Distribution
 from ._pytree import _PyTreeUpdateHelper
 from ._meta import _MetaUpdateHelper, _meta_map
+from ._cached import _cached_static_property
 
 
 def param(
@@ -280,6 +281,8 @@ def stop_gradients(obj: Module) -> Module:
     Returns:
         Module: PyTree with gradients stopped.
     """
+    # TODO: Remove the tree_map and work with the leaves directly.
+    # This is since object metadata already comprises flattened leaves.
 
     def _stop_grad(leaf: jax.Array, trainable: bool) -> jax.Array:
         """Stop gradients flowing through a given leaf if it is not trainable."""
@@ -362,8 +365,7 @@ class Module(equinox.Module):
         object.__setattr__(obj, "__meta_func__", __meta_func__)
         return obj
 
-    # @_cached_static_property
-    @property
+    @_cached_static_property
     def __meta__(self) -> List[Dict]:
         """Return the Module's meta.
 
