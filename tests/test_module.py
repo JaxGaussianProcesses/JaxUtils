@@ -14,7 +14,7 @@
 # ==============================================================================
 
 import jax.numpy as jnp
-from jaxutils.module import Module, constrain, param, unconstrain
+from jaxutils.module import Module, constrain, param, unconstrain, stop_gradients
 from jaxutils.bijectors import Identity, Softplus
 import jax.tree_util as jtu
 import jax
@@ -99,15 +99,25 @@ def test_module():
     ].set(trainable=[False, False, False])
 
     # Test stop gradients
+    # def loss(tree):
+    #     with tree.stop_gradients() as t:
+    #         return jnp.sum(
+    #             t.param_a**2
+    #             + t.sub_tree.param_c**2
+    #             + t.sub_tree.param_d**2
+    #             + t.sub_tree.param_e**2
+    #             + t.param_b**2
+    #         )
+
     def loss(tree):
-        with tree.stop_gradients() as t:
-            return jnp.sum(
-                t.param_a**2
-                + t.sub_tree.param_c**2
-                + t.sub_tree.param_d**2
-                + t.sub_tree.param_e**2
-                + t.param_b**2
-            )
+        tree = stop_gradients(tree)
+        return jnp.sum(
+            tree.param_a**2
+            + tree.sub_tree.param_c**2
+            + tree.sub_tree.param_d**2
+            + tree.sub_tree.param_e**2
+            + tree.param_b**2
+        )
 
     g = jax.grad(loss)(new_tree)
 
