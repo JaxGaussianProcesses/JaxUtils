@@ -98,6 +98,12 @@ def test_module():
         lambda t: (t.sub_tree.param_c, t.param_b, t.sub_tree.param_e)
     ].set(trainable=[False, False, False])
 
+    new_trainables = new_tree.meta_at[...].get("trainable")
+    new_trainable_list = jtu.tree_leaves(new_trainables)
+
+    for t1, t2 in zip(new_trainable_list, [True, False, True, False, False]):
+        assert t1 == t2
+
     # Test stop gradients
     # def loss(tree):
     #     with tree.stop_gradients() as t:
