@@ -24,7 +24,7 @@ from jax._src.random import _check_prng_key
 from jaxtyping import Array, Float
 from typing import Any
 
-from .module import Module, constrain, unconstrain, stop_gradients
+from .module import Module
 from .dataset import Dataset
 from .objective import Objective
 from .scan import vscan
@@ -107,12 +107,11 @@ def fit(
 
     # Unconstrained space loss function with stop-gradient rule for non-trainable params.
     def loss(model: Module, batch: Dataset) -> Float[Array, "1"]:
-        model = stop_gradients(model)
-        model = constrain(model)
-        return objective(model, batch)
+        with model.stop_gradients() as model:
+            return objective(model.constrain(), batch)
 
     # Unconstrained space model.
-    model = unconstrain(model)
+    model = model.unconstrain()
 
     # Initialise optimiser state.
     state = optim.init(model)
@@ -143,7 +142,7 @@ def fit(
     (model, _), history = scan(step, (model, state), (iter_keys), unroll=unroll)
 
     # Constrained space.
-    model = constrain(model)
+    model = model.constrain()
 
     return model, history
 

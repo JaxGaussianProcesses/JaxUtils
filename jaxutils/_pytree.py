@@ -16,12 +16,12 @@
 """This non-public module defines PyTree node updating functionality for the `jaxutils.Module` via the `jax.numpy` e.g. `.at` and `.set` syntax."""
 
 from __future__ import annotations
-from typing import Any, Sequence, Callable, Union, Iterable
-from jaxtyping import PyTree
-from equinox import tree_at
+from typing import Sequence, Callable, Union, Iterable
+from .pytree import PyTree
+from .node import node_at
 
 
-class _PyTreeUpdateRef:
+class _PyTreeNodeUpdateRef:
 
     __slots__ = (
         "pytree",
@@ -38,14 +38,29 @@ class _PyTreeUpdateRef:
     def get(self) -> PyTree:
         return self.where(self.pytree)
 
-    def set(self, values: Any) -> PyTree:
-        return tree_at(where=self.where, pytree=self.pytree, replace=values)
+    def replace(self, **kwargs) -> PyTree:
+        return node_at(
+            where=self.where,
+            pytree=self.pytree,
+            replace_fn=lambda node: node._replace(**kwargs),
+        )
 
-    def apply(self, func: Callable) -> PyTree:
-        return tree_at(where=self.where, pytree=self.pytree, replace_fn=func)
+    def replace_meta(self, **kwargs) -> PyTree:
+        return node_at(
+            where=self.where,
+            pytree=self.pytree,
+            replace_fn=lambda node: node._replace_meta(**kwargs),
+        )
+
+    def update_meta(self, **kwargs) -> PyTree:
+        return node_at(
+            where=self.where,
+            pytree=self.pytree,
+            replace_fn=lambda node: node._update_meta(**kwargs),
+        )
 
 
-class _PyTreeUpdateHelper:
+class _PyTreeNodeUpdateHelper:
     """Helper class for updating a PyTree."""
 
     __slots__ = ("pytree",)
@@ -54,8 +69,9 @@ class _PyTreeUpdateHelper:
         self.pytree = pytree
 
     def __getitem__(
-        self, where: Union[Callable, Sequence[str], Ellipsis]
-    ) -> _PyTreeUpdateRef:
+        self,
+        where: Union[Callable[[PyTree], Sequence[PyTree]], Sequence[str], Ellipsis],
+    ) -> _PyTreeNodeUpdateRef:
 
         if isinstance(where, str):
             where = eval("lambda x: x." + where)
@@ -75,7 +91,7 @@ class _PyTreeUpdateHelper:
         if isinstance(where, type(Ellipsis)):
             where = lambda x: x
 
-        return _PyTreeUpdateRef(self.pytree, where)
+        return _PyTreeNodeUpdateRef(self.pytree, where)
 
     def __repr__(self) -> str:
         return f"_PyTreeUpdateHelper({repr(self.pytree)})"

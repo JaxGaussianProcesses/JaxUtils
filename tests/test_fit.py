@@ -35,6 +35,10 @@ def test_simple_linear_model():
         weight: float = param(Identity)
         bias: float = param(Identity)
 
+        def __init__(self, weight: float, bias: float):
+            self.weight = weight
+            self.bias = bias
+
         def __call__(self, x):
             return self.weight * x + self.bias
 

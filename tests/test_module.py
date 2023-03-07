@@ -14,26 +14,29 @@
 # ==============================================================================
 
 import jax.numpy as jnp
-from jaxutils.module import Module, constrain, param, unconstrain, stop_gradients
+from jaxutils.pytree import static
+from jaxutils.module import Module, param
 from jaxutils.bijectors import Identity, Softplus
 import jax.tree_util as jtu
 import jax
 
 from typing import Any
+from dataclasses import dataclass
 
 import jax.tree_util as jtu
 import pytest
-import equinox as eqx
 
 
 def test_module():
 
     # Test init
+    @dataclass
     class SubTree(Module):
         param_c: float = param(Identity)
         param_d: float = param(Softplus)
         param_e: float = param(Softplus)
 
+    @dataclass
     class Tree(Module):
         param_a: float = param(Identity)
         sub_tree: SubTree
@@ -46,12 +49,7 @@ def test_module():
     )
 
     assert isinstance(tree, Module)
-    assert isinstance(tree.meta_at[...].get("trainable"), Module)
-    assert isinstance(tree.meta_at[...].get("transform"), Module)
-    assert isinstance(tree, eqx.Module)
-    assert isinstance(tree.meta_at[...].get("trainable"), eqx.Module)
-    assert isinstance(tree.meta_at[...].get("transform"), eqx.Module)
-
+    assert isinstance(tree._metatree, Module)
     assert tree.param_a == 1.0
     assert tree.sub_tree.param_c == 2.0
     assert tree.sub_tree.param_d == 3.0
@@ -59,71 +57,56 @@ def test_module():
     assert tree.param_b == 5.0
 
     # Test default bijectors
-    bijectors = tree.meta_at[...].get("transform")
-    bijector_list = jtu.tree_leaves(bijectors)
+    bijector_list = [leaf.get("bijector") for leaf in tree._metatree_leaves]
 
     for b1, b2 in zip(
-        bijector_list, [Identity, Identity, Softplus, Softplus, Softplus]
+        bijector_list, [Identity, Softplus, Identity, Softplus, Softplus]
     ):
         assert b1 == b2
 
     # Test default trainables
-    trainables = tree.meta_at[...].get("trainable")
-    trainable_list = jtu.tree_leaves(trainables)
+    trainable_list = [leaf.get("trainable") for leaf in tree._metatree_leaves]
 
     for t1, t2 in zip(trainable_list, [True, True, True, True, True]):
         assert t1 == t2
 
     # Test constrain and unconstrain
-    constrained = constrain(tree)
-    unconstrained = unconstrain(tree)
+    constrained = tree.constrain()
+    unconstrained = tree.unconstrain()
 
     leafs = jtu.tree_leaves(tree)
 
     for l1, l2, bij in zip(
         leafs,
         jtu.tree_leaves(constrained),
-        [Identity, Identity, Softplus, Softplus, Softplus],
+        [Identity, Softplus, Identity, Softplus, Softplus],
     ):
         assert bij.forward(l1) == l2
 
     for l1, l2, bij in zip(
         leafs,
         jtu.tree_leaves(unconstrained),
-        [Identity, Identity, Softplus, Softplus, Softplus],
+        [Identity, Softplus, Identity, Softplus, Softplus],
     ):
         assert bij.inverse(l1) == l2
 
-    new_tree = tree.meta_at[
-        lambda t: (t.sub_tree.param_c, t.param_b, t.sub_tree.param_e)
-    ].set(trainable=[False, False, False])
+    new_tree = tree.at[...].trainables(param_b=False)
+    new_tree = new_tree.at["sub_tree"].trainables(param_c=False, param_e=False)
+    new_trainable_list = [leaf.get("trainable") for leaf in new_tree._metatree_leaves]
 
-    new_trainables = new_tree.meta_at[...].get("trainable")
-    new_trainable_list = jtu.tree_leaves(new_trainables)
-
-    for t1, t2 in zip(new_trainable_list, [True, False, True, False, False]):
+    for t1, t2 in zip(new_trainable_list, [True, False, False, True, False]):
         assert t1 == t2
 
     # Test stop gradients
-    # def loss(tree):
-    #     with tree.stop_gradients() as t:
-    #         return jnp.sum(
-    #             t.param_a**2
-    #             + t.sub_tree.param_c**2
-    #             + t.sub_tree.param_d**2
-    #             + t.sub_tree.param_e**2
-    #             + t.param_b**2
-    #         )
-
     def loss(tree):
-        tree = stop_gradients(tree)
-        return jnp.sum(
-            tree.param_a**2
-            + tree.sub_tree.param_c**2
-            + tree.sub_tree.param_d**2
-            + tree.sub_tree.param_e**2
-            + tree.param_b**2
-        )
+        with tree.stop_gradients() as t:
+            return jnp.sum(
+                t.param_a**2
+                + t.sub_tree.param_c**2
+                + t.sub_tree.param_d**2
+                + t.sub_tree.param_e**2
+                + t.param_b**2
+            )
 
     g = jax.grad(loss)(new_tree)
 
@@ -134,62 +117,22 @@ def test_module():
     assert g.param_b == 0.0
 
 
-# TODO: Fix these tests.
-# def test_module_incorrect_typing():
-#     class NotAModule:
-#         pass
-
-#     class SubTree(Module):
-#         param_c: float = param(Identity)
-#         param_d: float = param(Softplus)
-#         param_e: float = param(Softplus)
-
-#     class Tree(Module):
-#         param_a: float = param(Identity)
-#         sub_tree: NotAModule
-#         param_b: float = param(Softplus)
-
-#     with pytest.raises(ValueError):
-#         Tree(
-#             param_a=1.0,
-#             sub_tree=SubTree(param_c=2.0, param_d=3.0, param_e=4.0),
-#             param_b=5.0,
-#         )
-
-
-# def test_module_unmarked_param():
-#     class SubTree(Module):
-#         param_c: float
-#         param_d: float = param(Softplus)
-#         param_e: float = param(Softplus)
-
-#     class Tree(Module):
-#         param_a: float = param(Identity)
-#         sub_tree: SubTree
-#         param_b: float = param(Softplus)
-
-#     with pytest.raises(ValueError):
-#         Tree(
-#             param_a=1.0,
-#             sub_tree=SubTree(param_c=2.0, param_d=3.0, param_e=4.0),
-#             param_b=5.0,
-#       )
-
-
 def test_tuple_attribute():
+    @dataclass
     class SubTree(Module):
-        param_a: int = param(transform=Identity, default=1)
-        param_b: int = param(transform=Softplus, default=2)
-        param_c: int = param(transform=Identity, default=3, trainable=False)
+        param_a: int = param(bijector=Identity, default=1)
+        param_b: int = param(bijector=Softplus, default=2)
+        param_c: int = param(bijector=Identity, default=3, trainable=False)
 
+    @dataclass
     class Tree(Module):
         trees: tuple
 
     tree = Tree((SubTree(), SubTree(), SubTree()))
 
-    assert len([meta.get("trainable") for meta in tree.__meta__]) == 9
-    assert len([meta.get("transform") for meta in tree.__meta__]) == 9
-    assert [meta.get("trainable") for meta in tree.__meta__] == [
+    assert len([meta.get("trainable") for meta in tree._metatree_leaves]) == 9
+    assert len([meta.get("bijector") for meta in tree._metatree_leaves]) == 9
+    assert [meta.get("trainable") for meta in tree._metatree_leaves] == [
         True,
         True,
         False,
@@ -200,7 +143,7 @@ def test_tuple_attribute():
         True,
         False,
     ]
-    assert [meta.get("transform") for meta in tree.__meta__] == [
+    assert [meta.get("bijector") for meta in tree._metatree_leaves] == [
         Identity,
         Softplus,
         Identity,
@@ -214,19 +157,21 @@ def test_tuple_attribute():
 
 
 def test_list_attribute():
+    @dataclass
     class SubTree(Module):
-        param_a: int = param(transform=Identity, default=1)
-        param_b: int = param(transform=Softplus, default=2)
-        param_c: int = param(transform=Identity, default=3, trainable=False)
+        param_a: int = param(bijector=Identity, default=1)
+        param_b: int = param(bijector=Softplus, default=2)
+        param_c: int = param(bijector=Identity, default=3, trainable=False)
 
+    @dataclass
     class Tree(Module):
         trees: list
 
     tree = Tree([SubTree(), SubTree(), SubTree()])
 
-    assert len([meta.get("trainable") for meta in tree.__meta__]) == 9
-    assert len([meta.get("transform") for meta in tree.__meta__]) == 9
-    assert [meta.get("trainable") for meta in tree.__meta__] == [
+    assert len([meta.get("trainable") for meta in tree._metatree_leaves]) == 9
+    assert len([meta.get("bijector") for meta in tree._metatree_leaves]) == 9
+    assert [meta.get("trainable") for meta in tree._metatree_leaves] == [
         True,
         True,
         False,
@@ -237,7 +182,7 @@ def test_list_attribute():
         True,
         False,
     ]
-    assert [meta.get("transform") for meta in tree.__meta__] == [
+    assert [meta.get("bijector") for meta in tree._metatree_leaves] == [
         Identity,
         Softplus,
         Identity,
@@ -251,31 +196,37 @@ def test_list_attribute():
 
 
 def test_module_not_enough_attributes():
+    @dataclass
     class MyModule1(Module):
         weight: Any = param(Identity)
 
     with pytest.raises(TypeError):
         MyModule1()
 
+    @dataclass
     class MyModule2(Module):
         weight: Any = param(Identity)
 
         def __init__(self):
-            pass
+            return None
 
-    with pytest.raises(ValueError):
-        MyModule2()
+    # We don't check this.
+    # with pytest.raises(AttributeError):
+    #     MyModule2()
+
     with pytest.raises(TypeError):
         MyModule2(1)
 
 
 def test_module_too_many_attributes():
+    @dataclass
     class MyModule1(Module):
         weight: Any = param(Identity)
 
     with pytest.raises(TypeError):
         MyModule1(1, 2)
 
+    @dataclass
     class MyModule2(Module):
         weight: Any = param(Identity)
 
@@ -288,6 +239,7 @@ def test_module_too_many_attributes():
 
 
 def test_module_setattr_after_init():
+    @dataclass
     class MyModule(Module):
         weight: Any = param(Identity)
 
@@ -297,6 +249,7 @@ def test_module_setattr_after_init():
 
 
 def test_wrong_attribute():
+    @dataclass
     class MyModule(Module):
         weight: Any = param(Identity)
 
@@ -311,9 +264,11 @@ def test_wrong_attribute():
 def test_inheritance():
     # no custom init / no custom init
 
+    @dataclass
     class MyModule(Module):
         weight: Any = param(Identity)
 
+    @dataclass
     class MyModule2(MyModule):
         weight2: Any = param(Identity)
 
@@ -331,6 +286,7 @@ def test_inheritance():
 
     # not custom init / custom init
 
+    @dataclass
     class MyModule3(MyModule):
         weight3: Any = param(Identity)
 
@@ -344,27 +300,27 @@ def test_inheritance():
 
     # custom init / no custom init
 
+    @dataclass
     class MyModule4(Module):
         weight4: Any = param(Identity)
 
-        def __init__(self, value4, **kwargs):
-            self.weight4 = value4
-            super().__init__(**kwargs)
-
+    @dataclass
     class MyModule5(MyModule4):
         weight5: Any = param(Identity)
 
     with pytest.raises(TypeError):
         m = MyModule5(value4=1, weight5=2)
 
+    @dataclass
     class MyModule6(MyModule4):
         pass
 
-    m = MyModule6(value4=1)
+    m = MyModule6(weight4=1)
     assert m.weight4 == 1
 
     # custom init / custom init
 
+    @dataclass
     class MyModule7(MyModule4):
         weight7: Any = param(Identity)
 
@@ -372,16 +328,17 @@ def test_inheritance():
             self.weight7 = value7
             super().__init__(**kwargs)
 
-    m = MyModule7(value4=1, value7=2)
+    m = MyModule7(weight4=1, value7=2)
     assert m.weight4 == 1
     assert m.weight7 == 2
 
 
 def test_static_field():
+    @dataclass
     class MyModule(Module):
         field1: int = param(Identity)
-        field2: int = eqx.static_field()
-        field3: int = eqx.static_field(default=3)
+        field2: int = static()
+        field3: int = static(default=3)
 
     m = MyModule(1, 2)
     flat, treedef = jtu.tree_flatten(m)
@@ -393,29 +350,33 @@ def test_static_field():
     assert rm.field3 == 3
 
 
-def test_wrap_method():
-    class MyModule(Module):
-        a: int = param(Identity)
+# TODO: Wrap methods with a Partial like Equinox does in future.
+# def test_wrap_method():
+#     @dataclass
+#     class MyModule(Module):
+#         a: int = param(Identity)
 
-        def f(self, b):
-            return self.a + b
+#         def f(self, b):
+#             return self.a + b
 
-    m = MyModule(13)
-    assert isinstance(m.f, jtu.Partial)
-    flat, treedef = jtu.tree_flatten(m.f)
-    assert len(flat) == 1
-    assert flat[0] == 13
-    assert jtu.tree_unflatten(treedef, flat)(2) == 15
+#     m = MyModule(13)
+#     assert isinstance(m.f, jtu.Partial)
+#     flat, treedef = jtu.tree_flatten(m.f)
+#     assert len(flat) == 1
+#     assert flat[0] == 13
+#     assert jtu.tree_unflatten(treedef, flat)(2) == 15
 
 
 def test_init_subclass():
     ran = []
 
+    @dataclass
     class MyModule(Module):
         def __init_subclass__(cls, **kwargs):
             super().__init_subclass__(**kwargs)
             ran.append(True)
 
+    @dataclass
     class AnotherModule(MyModule):
         pass
 

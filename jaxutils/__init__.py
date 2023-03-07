@@ -13,13 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-from .module import Module, constrain, param, static, unconstrain, stop_gradients
+from .pytree import PyTree, static
+from .module import Module, param
 from .bijectors import Bijector, Identity, Softplus
 from .objective import Objective
 from .dataset import Dataset
 from .fit import fit, get_batch
 from .scan import vscan
-
 
 __authors__ = "Thomas Pinder, Daniel Dodd"
 __license__ = "MIT"
@@ -32,17 +32,15 @@ __contributors__ = (
 )
 
 __all__ = [
+    "PyTree",
+    "static",
+    "Module",
+    "param",
     "Bijector",
     "Identity",
     "Softplus",
     "Objective",
     "Dataset",
-    "Module",
-    "param",
-    "static",
-    "constrain",
-    "unconstrain",
-    "stop_gradients",
     "fit",
     "get_batch",
     "vscan",

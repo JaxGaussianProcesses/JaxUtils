@@ -13,10 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-import equinox as eqx
+from .pytree import PyTree
 
 
-class Distribution(eqx.Module):
+class Distribution(PyTree):
     """Base class for distributions."""
 
 

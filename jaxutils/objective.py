@@ -14,13 +14,15 @@
 # ==============================================================================
 
 import abc
-import equinox as eqx
+from dataclasses import field
+from jaxtyping import Float, Array
 
+from .pytree import PyTree
 from .dataset import Dataset
 from .module import Module
 
 
-class Objective(eqx.Module):
+class Objective(PyTree):
     """Base class for objective functions.
 
     !!! example
@@ -34,8 +36,8 @@ class Objective(eqx.Module):
         The objective function is negated if `negative=True`.
     """
 
-    negative: bool = eqx.static_field()
-    constant: float = eqx.static_field()
+    negative: bool = field(metadata={"static": True})
+    constant: float = field(metadata={"static": True})
 
     def __init__(self, negative: bool = False):
         """Initialise the objective function.
@@ -53,7 +55,7 @@ class Objective(eqx.Module):
         self.negative = negative
         self.constant = -1.0 if negative else 1.0
 
-    def __call__(self, model: Module, train_data: Dataset) -> float:
+    def __call__(self, model: Module, train_data: Dataset) -> Float[Array, "1"]:
         """Evaluate the objective function.
 
         Args:
@@ -67,8 +69,17 @@ class Objective(eqx.Module):
         return self.constant * self.evaluate(model, train_data)
 
     @abc.abstractmethod
-    def evaluate(self, model: Module, train_data: Dataset) -> float:
-        """Evaluate the objective function."""
+    def evaluate(self, model: Module, train_data: Dataset) -> Float[Array, "1"]:
+        """Evaluate the objective function.
+
+        Args:
+            model(Base): A model.
+            *args: Additional arguments.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            float: The objective function.
+        """
 
 
 __all__ = [

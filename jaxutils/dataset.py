@@ -17,11 +17,10 @@ from __future__ import annotations
 import jax.numpy as jnp
 from jaxtyping import Array, Float
 from typing import Optional
+from .pytree import PyTree
 
-import equinox as eqx
 
-
-class Dataset(eqx.Module):
+class Dataset(PyTree):
     """Base class for datasets."""
 
     X: Optional[Float[Array, "N D"]] = None

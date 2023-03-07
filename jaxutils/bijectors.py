@@ -15,11 +15,12 @@
 """Bijectors for use in model optimisation."""
 
 import jax.numpy as jnp
-import equinox as eqx
 from typing import Callable
 
+from .pytree import PyTree, static
 
-class Bijector(eqx.Module):
+
+class Bijector(PyTree):
     """Base class for parameter bijector transformations. These are useful for model optimisation, where
     gradients are taken in the "unconstrained" (real) parameter space, while evaluating the model takes place
     in the "constrained" parameter space.
@@ -36,8 +37,21 @@ class Bijector(eqx.Module):
     Adding log_det_jacobian's etc., is on the TODO list of this class.
     """
 
-    forward: Callable = eqx.static_field()
-    inverse: Callable = eqx.static_field()
+    forward: Callable = static()
+    inverse: Callable = static()
+
+    def __init__(self, forward: Callable, inverse: Callable) -> None:
+        """Initialise the bijector.
+
+        Args:
+            forward(Callable): The forward transformation.
+            inverse(Callable): The inverse transformation.
+
+        Returns:
+            Bijector: A bijector.
+        """
+        self.forward = forward
+        self.inverse = inverse
 
 
 """Identity bijector."""
