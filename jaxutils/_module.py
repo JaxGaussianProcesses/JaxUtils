@@ -14,32 +14,30 @@
 # ==============================================================================
 
 """This non-public module defines PyTree node updating functionality for the `jaxutils.Module` via the `jax.numpy` e.g. `.at` and `.set` syntax."""
-from typing import Sequence, Callable, Union, Iterable
+from typing import Sequence, Callable, Union, Dict
+from .bijectors import Bijector
+from .distributions import Distribution
 from .module import Module
 from .pytree import PyTree
 from .node import node_at
 
 
-def _to_callable(
-    where: Union[Callable[[Module], Sequence[Module]], Sequence[str], Ellipsis]
-) -> Callable[[Module], Sequence[Module]]:
+def _replace_trainables(module: Module, **kwargs: Dict[str, bool]) -> Module:
+    """Replace the trainability status of local nodes of the PyTree."""
+    _meta_wrapper = {k: {"trainable": v} for k, v in kwargs.items()}
+    return module._update_meta(**_meta_wrapper)
 
-    if isinstance(where, str):
-        where = eval("lambda x: x." + where)
 
-    if isinstance(where, Iterable):
+def _replace_bijectors(module: Module, **kwargs: Dict[str, Bijector]) -> Module:
+    """Replace the bijectors of local nodes of the PyTree."""
+    _meta_wrapper = {k: {"bijector": v} for k, v in kwargs.items()}
+    return module._update_meta(**_meta_wrapper)
 
-        def _to_path(it: Iterable):
-            return "".join(
-                [str(elem) if not isinstance(elem, str) else "." + elem for elem in it]
-            )
 
-        where = eval("lambda x: x" + _to_path(where))
-
-    if isinstance(where, type(Ellipsis)):
-        where = lambda x: x
-
-    return where
+def _replace_priors(module: Module, **kwargs: Dict[str, Distribution]) -> Module:
+    """Replace the priors of local nodes of the PyTree."""
+    _meta_wrapper = {k: {"prior": v} for k, v in kwargs.items()}
+    return module._update_meta(**_meta_wrapper)
 
 
 class _ModuleNodeUpdateRef:
@@ -63,7 +61,7 @@ class _ModuleNodeUpdateRef:
         return node_at(
             where=self.where,
             pytree=self.module,
-            replace_fn=lambda node: node._replace(**kwargs),
+            operator=lambda node: node._replace(**kwargs),
             node_type=Module,
         )
 
@@ -71,7 +69,7 @@ class _ModuleNodeUpdateRef:
         return node_at(
             where=self.where,
             pytree=self.module,
-            replace_fn=lambda node: node._replace_meta(**kwargs),
+            operator=lambda node: node._replace_meta(**kwargs),
             node_type=Module,
         )
 
@@ -79,7 +77,7 @@ class _ModuleNodeUpdateRef:
         return node_at(
             where=self.where,
             pytree=self.module,
-            replace_fn=lambda node: node._update_meta(**kwargs),
+            operator=lambda node: node._update_meta(**kwargs),
             node_type=Module,
         )
 
@@ -87,7 +85,7 @@ class _ModuleNodeUpdateRef:
         return node_at(
             where=self.where,
             pytree=self.module,
-            replace_fn=lambda node: node._replace_trainables(**kwargs),
+            operator=lambda node: _replace_trainables(node, **kwargs),
             node_type=Module,
         )
 
@@ -95,7 +93,7 @@ class _ModuleNodeUpdateRef:
         return node_at(
             where=self.where,
             pytree=self.module,
-            replace_fn=lambda node: node._replace_bijectors(**kwargs),
+            operator=lambda node: _replace_bijectors(node, **kwargs),
             node_type=Module,
         )
 
@@ -103,7 +101,7 @@ class _ModuleNodeUpdateRef:
         return node_at(
             where=self.where,
             pytree=self.module,
-            replace_fn=lambda node: node._replace_priors(**kwargs),
+            operator=lambda node: _replace_priors(node, **kwargs),
             node_type=Module,
         )
 
@@ -120,8 +118,6 @@ class _ModuleNodeUpdateHelper:
         self,
         where: Union[Callable[[Module], Sequence[Module]], Sequence[str], Ellipsis],
     ) -> _ModuleNodeUpdateRef:
-
-        where = _to_callable(where)
 
         return _ModuleNodeUpdateRef(self.module, where)
 

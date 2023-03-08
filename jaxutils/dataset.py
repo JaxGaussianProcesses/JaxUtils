@@ -18,35 +18,24 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float
 from typing import Optional
 from .pytree import PyTree
+from dataclasses import dataclass
 
-
+# TODO: Consider HeterotopicDataset and IsotopicDataset abstractions.
+@dataclass
 class Dataset(PyTree):
-    """Base class for datasets."""
+    """Base class for datasets.
+
+    Attributes:
+        X (Optional[Float[Array, "N D"]]): Input data.
+        y (Optional[Float[Array, "N Q"]]): Output data.
+    """
 
     X: Optional[Float[Array, "N D"]] = None
     y: Optional[Float[Array, "N Q"]] = None
 
-    # TODO: Consider HeterotopicDataset and IsotopicDataset abstractions.
-
-    def __init__(
-        self,
-        X: Optional[Float[Array, "N D"]] = None,
-        y: Optional[Float[Array, "N Q"]] = None,
-    ) -> None:
-        """
-        Initialise a dataset object.
-
-        Args:
-            X(Float[Array, "N D"]]): Input data.
-            y(Float[Array, "N Q"]]): Output data.
-
-        Returns:
-            Dataset: A dataset object.
-        """
-
-        _check_shape(X, y)
-        self.X = X
-        self.y = y
+    def __post_init__(self) -> None:
+        """Checks that the shapes of X and y are compatible."""
+        _check_shape(self.X, self.y)
 
     def __repr__(self) -> str:
         """Returns a string representation of the dataset."""

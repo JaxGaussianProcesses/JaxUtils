@@ -67,8 +67,7 @@ class _CountedIdDict:
 def node_at(
     where: Callable[[NodeType], Sequence[NodeType]],
     pytree: PyTree,
-    replace: Sequence[Any] = None,
-    replace_fn: Callable[[NodeType], Any] = None,
+    operator: Callable[[NodeType], Any] = None,
     node_type: NodeType = PyTree,
 ):
     """Update a PyTree node or nodes in-place.
@@ -97,7 +96,10 @@ def node_at(
     if (
         structure1 != structure2
         or len(leaves1) != len(leaves2)
-        or any(l1 is not l2 for l1, l2 in zip(leaves1, leaves2))
+        or any(
+            l1 is not l2 and isinstance(l1, node_type)
+            for l1, l2 in zip(leaves1, leaves2)
+        )
     ):
         raise ValueError(
             "`where` must use just the PyTree structure of `pytree`. `where` must not "
@@ -118,45 +120,16 @@ def node_at(
 
     if in_pytree:
         nodes = (node_or_nodes,)
-        if replace is not None:
-            replace = (replace,)
     else:
         nodes = node_or_nodes
 
     del in_pytree, node_or_nodes
 
-    # Checks on the where to ensure the node maps to another PyTree.
-    for num, node in enumerate(nodes):
-        if not isinstance(node, node_type):
-            raise ValueError(
-                f"Node number {num} in the `where` sequence is not of type node_type={node_type.__name__}."
-            )
+    def _replace_fn(x):
+        x = jtu.tree_map(_remove_leaf_wrapper, x)
+        return operator(x)
 
-    # Normalise replace vs replace_fn
-    if replace is None:
-        if replace_fn is None:
-            raise ValueError(
-                "Precisely one of `replace` and `replace_fn` must be specified."
-            )
-        else:
-
-            def _replace_fn(x):
-                x = jtu.tree_map(_remove_leaf_wrapper, x)
-                return replace_fn(x)
-
-            replace_fns = [_replace_fn] * len(nodes)
-    else:
-        if replace_fn is None:
-            if len(nodes) != len(replace):
-                raise ValueError(
-                    "`where` must return a sequence of leaves of the same length as "
-                    "`replace`."
-                )
-            replace_fns = [lambda _, r=r: r for r in replace]
-        else:
-            raise ValueError(
-                "Precisely one of `replace` and `replace_fn` must be specified."
-            )
+    replace_fns = [_replace_fn] * len(nodes)
     node_replace_fns = _CountedIdDict(nodes, replace_fns)
 
     # Actually do the replacement

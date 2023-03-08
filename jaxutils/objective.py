@@ -25,14 +25,17 @@ from .module import Module
 class Objective(PyTree):
     """Base class for objective functions.
 
-    !!! example
-        ```python
-        class MeanSquaredError(Objective):
-            def evaluate(self, model, train_data):
-                return jnp.mean((train_data.y - model(train_data.X)) ** 2)
-        ```
+    Example:
+        >>> from jax import numpy as jnp
+        >>> from jaxutils import Objective
+        >>>
+        >>> class MeanSquaredError(Objective):
+        ...     def evaluate(self, model, train_data):
+        ...         return jnp.mean((train_data.y - model(train_data.X)) ** 2)
+        ...
+        >>> mse = MeanSquaredError()
 
-    !!! note
+    Note:
         The objective function is negated if `negative=True`.
     """
 

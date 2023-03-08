@@ -16,9 +16,10 @@
 """This non-public module defines PyTree node updating functionality for the `jaxutils.Module` via the `jax.numpy` e.g. `.at` and `.set` syntax."""
 
 from __future__ import annotations
-from typing import Sequence, Callable, Union, Iterable
+from typing import Sequence, Callable, Union
 from .pytree import PyTree
 from .node import node_at
+from ._utils import _to_callable
 
 
 class _PyTreeNodeUpdateRef:
@@ -73,25 +74,7 @@ class _PyTreeNodeUpdateHelper:
         where: Union[Callable[[PyTree], Sequence[PyTree]], Sequence[str], Ellipsis],
     ) -> _PyTreeNodeUpdateRef:
 
-        if isinstance(where, str):
-            where = eval("lambda x: x." + where)
-
-        if isinstance(where, Iterable):
-
-            def _to_path(it: Iterable):
-                return "".join(
-                    [
-                        str(elem) if not isinstance(elem, str) else "." + elem
-                        for elem in it
-                    ]
-                )
-
-            where = eval("lambda x: x" + _to_path(where))
-
-        if isinstance(where, type(Ellipsis)):
-            where = lambda x: x
-
-        return _PyTreeNodeUpdateRef(self.pytree, where)
+        return _PyTreeNodeUpdateRef(self.pytree, _to_callable(where))
 
     def __repr__(self) -> str:
         return f"_PyTreeUpdateHelper({repr(self.pytree)})"

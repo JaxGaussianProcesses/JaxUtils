@@ -107,8 +107,8 @@ def fit(
 
     # Unconstrained space loss function with stop-gradient rule for non-trainable params.
     def loss(model: Module, batch: Dataset) -> Float[Array, "1"]:
-        with model.stop_gradients() as model:
-            return objective(model.constrain(), batch)
+        model = model.stop_gradients()
+        return objective(model.constrain(), batch)
 
     # Unconstrained space model.
     model = model.unconstrain()

@@ -18,27 +18,22 @@
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import field
+from dataclasses import field, Field
 from abc import ABCMeta
-from typing import Any, Set, Dict, List, Callable
+from typing import Any, Set, Dict, List
 from copy import copy, deepcopy
 
 import jax
 import jax.tree_util as jtu
 
 
-def static(**kwargs: Any):
-    """Alias of `equinox.static_field`. Provided for convenience.
+def static(**kwargs: Any) -> Field:
+    """Used for marking that a field should _not_ be treated as a leaf of the PyTree.
 
-    Used for marking that a field should _not_ be treated as a leaf of the PyTree
-    of a `jaxutils.Module`/ `equinox.Module`. (And is instead treated as part of the structure, i.e.
-    as extra metadata.)
-
-    Example:
+    Equivalent to `equinox.static_field`.
 
     Args:
         **kwargs (Any): If any are passed then they are passed on to `dataclass.field`.
-        (Recall that JaxUtils uses dataclasses for its modules, based on Equinox's infrastructure.)
     """
     try:
         metadata = dict(kwargs["metadata"])
@@ -60,15 +55,17 @@ class PyTreeMeta(ABCMeta):
 
 
 class PyTree(metaclass=PyTreeMeta):
+    """Base class for PyTree."""
+
     _pytree__initialized: bool
     _pytree__static_fields: Set[str]
     _pytree__class_is_mutable: bool
     _pytree__meta: Dict[str, Any]
     _pytree__annotations: List[str]
     _pytree__is_leaf: Dict[str:bool]
-    _pytree__metatree_leaves: List[Dict[str:Any]]
 
     def __init_subclass__(cls, mutable: bool = False):
+
         jtu.register_pytree_node(
             cls,
             flatten_func=tree_flatten,
@@ -84,7 +81,6 @@ class PyTree(metaclass=PyTreeMeta):
         cls._pytree__meta = {}
         cls._pytree__annotations = class_annotations
         cls._pytree__is_leaf = {}
-        cls._pytree__metatree_leaves = []
 
         # get class info
         class_vars = _get_all_class_vars(cls)
@@ -108,20 +104,6 @@ class PyTree(metaclass=PyTreeMeta):
                 and field not in cls._pytree__meta.keys()
             ):
                 cls._pytree__meta[field] = {}
-
-    @property
-    def _metatree_leaves(self) -> List[Dict[str, Any]]:
-        return _unpack_metatree_leaves(self)
-
-    @property
-    def _metatree(self) -> Dict[str, Any]:
-        return jtu.tree_structure(self).unflatten(self._metatree_leaves)
-
-    @property
-    def pytree_at(self):
-        from ._pytree import _PyTreeNodeUpdateHelper
-
-        return _PyTreeNodeUpdateHelper(self)
 
     def _replace_meta(self, **kwargs: Any) -> PyTree:
         """
@@ -206,18 +188,11 @@ class PyTree(metaclass=PyTreeMeta):
         )
         object.__setattr__(self, field, value)
 
-        if not _is_leaf and field not in self._pytree__static_fields:
+    @property
+    def pytree_at(self):
+        from ._pytree import _PyTreeNodeUpdateHelper
 
-            def _unpack_pytree__meta(value):
-                if isinstance(value, PyTree):
-                    return value._pytree__meta
-                else:
-                    return value
-
-            _meta = jtu.tree_map(
-                _unpack_pytree__meta, value, is_leaf=lambda x: isinstance(x, PyTree)
-            )
-            object.__setattr__(self, "_pytree__metatree_leaves", _meta)
+        return _PyTreeNodeUpdateHelper(self)
 
 
 def tree_flatten(pytree: PyTree):
@@ -281,22 +256,6 @@ def _get_all_annotations(cls: type) -> Dict[str, type]:
         if hasattr(c, "__annotations__"):
             d.update(**c.__annotations__)
     return d
-
-
-def _metadata_map(f: Callable[[Any, Dict[str, Any]], Any], pytree: PyTree) -> PyTree:
-    """Apply a function to a pytree where the first argument are the pytree leaves, and the second argument are the pytree metadata leaves.
-
-    Args:
-        f (Callable[[Any, Dict[str, Any]], Any]): The function to apply to the pytree.
-        pytree (PyTree): The pytree to apply the function to.
-
-    Returns:
-        PyTree: The transformed pytree.
-    """
-    leaves, treedef = jtu.tree_flatten(pytree)
-    meta_leaves = _unpack_metatree_leaves(pytree)
-    all_leaves = [leaves] + [meta_leaves]
-    return treedef.unflatten(f(*xs) for xs in zip(*all_leaves))
 
 
 def _unpack_metatree_leaves(pytree: PyTree) -> List[Dict[str, Any]]:
