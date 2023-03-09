@@ -12,63 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Bijectors for use in model optimisation."""
 
+import distrax as dx
 import jax.numpy as jnp
-from typing import Callable
+import tensorflow_probability.substrates.jax as tfb
 
-from .pytree import PyTree, static
+Identity = dx.Lambda(forward=lambda x: x, inverse=lambda x: x)
 
-
-class Bijector(PyTree):
-    """Base class for parameter bijector transformations. These are useful for model optimisation, where
-    gradients are taken in the "unconstrained" (real) parameter space, while evaluating the model takes place
-    in the "constrained" parameter space.
-
-    For example, the Softplus bijector, f, is defined as:
-        f(x) = log(1 + exp(x))
-        f^{-1}(y) = log(exp(y) - 1)
-
-    gives the "unconstrained" parameter space as the real line, while the "constrained" parameter space is the positive real line.
-    This means we can ensure that the corresponding model parameter remains positive during optimisation.
-
-    To implement your own bijector, you need to do is define a `forward` and `inverse` transformation!
-
-    Adding log_det_jacobian's etc., is on the TODO list of this class.
-    """
-
-    forward: Callable = static()
-    inverse: Callable = static()
-
-    def __init__(self, forward: Callable, inverse: Callable) -> None:
-        """Initialise the bijector.
-
-        Args:
-            forward(Callable): The forward transformation.
-            inverse(Callable): The inverse transformation.
-
-        Returns:
-            Bijector: A bijector.
-        """
-        self.forward = forward
-        self.inverse = inverse
-
-
-"""Identity bijector."""
-Identity = Bijector(forward=lambda x: x, inverse=lambda x: x)
-
-"""Softplus bijector."""
-Softplus = Bijector(
+Softplus = dx.Lambda(
     forward=lambda x: jnp.log(1 + jnp.exp(x)),
     inverse=lambda x: jnp.log(jnp.exp(x) - 1.0),
 )
 
-"""Triangular bijector."""
-# TODO: Add triangular bijector.
-
-
-__all__ = [
-    "Bijector",
-    "Identity",
-    "Softplus",
-]
+FillScaleTriL = dx.Chain(
+    [
+        tfb.FillScaleTriL(diag_shift=jnp.array(1e-6)),
+    ]
+)

@@ -17,12 +17,12 @@ from __future__ import annotations
 import jax.numpy as jnp
 from jaxtyping import Array, Float
 from typing import Optional
-from .pytree import PyTree
+from simple_pytree import Pytree
 from dataclasses import dataclass
 
-# TODO: Consider HeterotopicDataset and IsotopicDataset abstractions.
+
 @dataclass
-class Dataset(PyTree):
+class Dataset(Pytree):
     """Base class for datasets.
 
     Attributes:
