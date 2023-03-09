@@ -67,21 +67,27 @@ class Parameters(Pytree, dict):
         return self._param_dict
 
     def update_params(self, value: Dict) -> Parameters:
-        return Parameters(value, self.bijectors, self.trainables, self.training_history)
+        return Parameters(
+            value, self.bijectors, self.trainables, self.training_history
+        )
 
     @property
     def bijectors(self) -> Dict:
         return self._bijector_dict
 
     def update_bijectors(self, value: Dict) -> Parameters:
-        return Parameters(self.params, value, self.trainables, self.training_history)
+        return Parameters(
+            self.params, value, self.trainables, self.training_history
+        )
 
     @property
     def trainables(self) -> Dict:
         return self._trainable_dict
 
     def update_trainables(self, value: Dict) -> Parameters:
-        return Parameters(self.params, self.bijectors, value, self.training_history)
+        return Parameters(
+            self.params, self.bijectors, value, self.training_history
+        )
 
     @property
     def training_history(self) -> list:
@@ -106,20 +112,26 @@ class Parameters(Pytree, dict):
     def constrain(self):
         return self.update_params(
             jtu.tree_map(
-                lambda param, trans: trans.forward(param), self.params, self.bijectors
+                lambda param, trans: trans.forward(param),
+                self.params,
+                self.bijectors,
             )
         )
 
     def unconstrain(self):
         return self.update_params(
             jtu.tree_map(
-                lambda param, trans: trans.inverse(param), self.params, self.bijectors
+                lambda param, trans: trans.inverse(param),
+                self.params,
+                self.bijectors,
             )
         )
 
     def stop_gradients(self):
         def _stop_grad(param: Dict, trainable: Dict) -> Dict:
-            return jax.lax.cond(trainable, lambda x: x, jax.lax.stop_gradient, param)
+            return jax.lax.cond(
+                trainable, lambda x: x, jax.lax.stop_gradient, param
+            )
 
         return self.update_params(
             jtu.tree_map(
@@ -128,6 +140,15 @@ class Parameters(Pytree, dict):
                 self.trainables,
             )
         )
+
+    def items(self):
+        return self.params.items()
+
+    def keys(self):
+        return self.params.keys()
+
+    def values(self):
+        return self.params.values()
 
 
 __all__ = ["Parameters"]
