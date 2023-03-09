@@ -45,6 +45,7 @@ REQUIRES = [
     "optax",
     "tqdm",
     "simple-pytree",
+    "distrax",
 ]
 
 EXTRAS = {
