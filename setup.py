@@ -44,6 +44,7 @@ REQUIRES = [
     "jaxtyping",
     "optax",
     "tqdm",
+    "simple-pytree",
 ]
 
 EXTRAS = {

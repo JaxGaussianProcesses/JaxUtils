@@ -19,7 +19,21 @@ from jaxutils.parameters import Parameters
 import jax.numpy as jnp
 import jax.random as jr
 import optax as ox
-from simple_pytree import Pytree
+import abc
+from dataclasses import dataclass
+from simple_pytree import Pytree, static_field
+from jaxtyping import Array, Float
+from typing import Any
+
+
+### Base class for objective functions:
+@dataclass
+class Objective(Pytree):
+    model: Any = static_field()
+
+    @abc.abstractmethod
+    def __call__(self, params: Parameters, train_data: Dataset) -> Float[Array, "1"]:
+        raise NotImplementedError
 
 
 def test_simple_linear_model():
@@ -30,22 +44,27 @@ def test_simple_linear_model():
 
     # (2) Define your model:
     class LinearModel(Pytree):
-        def predict(self, params: Parameters, x):
+        def __call__(self, params: Parameters, x):
             return params["weight"] * x + params["bias"]
 
         def init_params(self):
             return Parameters({"weight": 1.0, "bias": 1.0})
 
-        def objective(self, params: Parameters, train_data: Dataset) -> float:
-            return jnp.mean((train_data.y - self.predict(params, train_data.X)) ** 2)
+    # (3) Define your objective:
+    class MeanSquaredError(Objective):
+        def __call__(
+            self, params: Parameters, train_data: Dataset
+        ) -> Float[Array, "1"]:
+            return jnp.mean((train_data.y - self.model(params, train_data.X)) ** 2)
 
     model = LinearModel()
+    objective = MeanSquaredError(model)
     params = model.init_params()
 
     # (4) Train!
     trained_params = fit(
         params=params,
-        objective=model.objective,
+        objective=objective,
         train_data=D,
         optim=ox.sgd(0.001),
         num_iters=100,
@@ -53,4 +72,4 @@ def test_simple_linear_model():
 
     assert len(trained_params.training_history) == 100
     assert isinstance(trained_params, Parameters)
-    assert model.objective(trained_params, D) < model.objective(params, D)
+    assert objective(trained_params, D) < objective(params, D)
