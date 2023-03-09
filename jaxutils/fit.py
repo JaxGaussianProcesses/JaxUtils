@@ -107,7 +107,7 @@ def fit(
 
     # Constrained space.
     params = params.constrain()
-    params.training_history = history
+    params = params.update_training_history(history)
 
     return params
 

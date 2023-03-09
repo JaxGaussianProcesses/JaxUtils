@@ -39,7 +39,7 @@ class Parameters(Pytree, dict):
         params: Dict,
         bijectors: Dict = None,
         trainables: Dict = None,
-        training_history: list = None,
+        training_history=None,
     ):
 
         if bijectors is None:
@@ -92,7 +92,7 @@ class Parameters(Pytree, dict):
             self.params,
             self.bijectors,
             self.trainables,
-            self.training_history.append(value),
+            value,
         )
 
     def unpack(self):

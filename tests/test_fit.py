@@ -15,13 +15,11 @@
 
 from jaxutils.dataset import Dataset
 from jaxutils.fit import fit
-from jaxutils.bijectors import Identity
-from jaxutils.module import param, Module
-from jaxutils.objective import Objective
-
+from jaxutils.parameters import Parameters
 import jax.numpy as jnp
 import jax.random as jr
 import optax as ox
+from simple_pytree import Pytree
 
 
 def test_simple_linear_model():
@@ -31,31 +29,28 @@ def test_simple_linear_model():
     D = Dataset(X, y)
 
     # (2) Define your model:
-    class LinearModel(Module):
-        weight: float = param(Identity)
-        bias: float = param(Identity)
+    class LinearModel(Pytree):
+        def predict(self, params: Parameters, x):
+            return params["weight"] * x + params["bias"]
 
-        def __init__(self, weight: float, bias: float):
-            self.weight = weight
-            self.bias = bias
+        def init_params(self):
+            return Parameters({"weight": 1.0, "bias": 1.0})
 
-        def __call__(self, x):
-            return self.weight * x + self.bias
+        def objective(self, params: Parameters, train_data: Dataset) -> float:
+            return jnp.mean((train_data.y - self.predict(params, train_data.X)) ** 2)
 
-    model = LinearModel(weight=1.0, bias=1.0)
-
-    # (3) Define your loss function:
-    class MeanSqaureError(Objective):
-        def evaluate(self, model: LinearModel, train_data: Dataset) -> float:
-            return jnp.mean((train_data.y - model(train_data.X)) ** 2)
-
-    loss = MeanSqaureError()
+    model = LinearModel()
+    params = model.init_params()
 
     # (4) Train!
-    trained_model, hist = fit(
-        model=model, objective=loss, train_data=D, optim=ox.sgd(0.001), num_iters=100
+    trained_params = fit(
+        params=params,
+        objective=model.objective,
+        train_data=D,
+        optim=ox.sgd(0.001),
+        num_iters=100,
     )
 
-    assert len(hist) == 100
-    assert isinstance(trained_model, LinearModel)
-    assert loss(trained_model, D) < loss(model, D)
+    assert len(trained_params.training_history) == 100
+    assert isinstance(trained_params, Parameters)
+    assert model.objective(trained_params, D) < model.objective(params, D)
