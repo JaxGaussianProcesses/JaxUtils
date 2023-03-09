@@ -13,10 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-from .pytree import PyTree, static
-from .module import Module, param
-from .bijectors import Bijector, Identity, Softplus
-from .objective import Objective
+from .pytree import PyTree
+from .parameters import Parameters
+from .bijectors import Identity, Softplus, FillScaleTriL
 from .dataset import Dataset
 from .fit import fit, get_batch
 from .scan import vscan
@@ -33,13 +32,10 @@ __contributors__ = (
 
 __all__ = [
     "PyTree",
-    "static",
-    "Module",
-    "param",
-    "Bijector",
+    "Parameters",
     "Identity",
     "Softplus",
-    "Objective",
+    "FillScaleTriL",
     "Dataset",
     "fit",
     "get_batch",

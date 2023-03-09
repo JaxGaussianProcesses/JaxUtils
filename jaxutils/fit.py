@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable
 
 import jax
 import jax.random as jr
@@ -32,7 +32,7 @@ from .scan import vscan
 def fit(
     *,
     params: Parameters,
-    objective: callable[[Parameters, Dataset], Float[Array, "1"]],
+    objective: Callable[[Parameters, Dataset], Float[Array, "1"]],
     train_data: Dataset,
     optim: ox.GradientTransformation,
     num_iters: Optional[int] = 100,
@@ -46,7 +46,7 @@ def fit(
 
     Args:
         params (Parameters): The parameters to be optimised.
-        objective (callable[[Parameters, Dataset], Float[Array, "1"]]): The objective function that we are optimising with respect to.
+        objective (Callable[[Parameters, Dataset], Float[Array, "1"]]): The objective function that we are optimising with respect to.
         train_data (Dataset): The training data to be used for the optimisation.
         optim (GradientTransformation): The Optax optimiser that is to be used for learning a parameter set.
         num_iters (Optional[int]): The number of optimisation steps to run. Defaults to 100.

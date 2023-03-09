@@ -15,7 +15,7 @@
 
 import distrax as dx
 import jax.numpy as jnp
-import tensorflow_probability.substrates.jax as tfb
+import tensorflow_probability.substrates.jax.bijectors as tfb
 
 Identity = dx.Lambda(forward=lambda x: x, inverse=lambda x: x)
 
@@ -29,3 +29,9 @@ FillScaleTriL = dx.Chain(
         tfb.FillScaleTriL(diag_shift=jnp.array(1e-6)),
     ]
 )
+
+__all__ = [
+    "Identity",
+    "Softplus",
+    "FillScaleTriL",
+]
