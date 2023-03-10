@@ -17,9 +17,12 @@ from __future__ import annotations
 
 import jax.tree_util as jtu
 import jax
+import jax.numpy as jnp
 from typing import Dict, Any
 from .bijectors import Identity
 from simple_pytree import Pytree, static_field
+from jax.tree_util import tree_flatten
+from jaxtyping import Float, Array
 
 
 class Parameters(Pytree, dict):
@@ -39,6 +42,7 @@ class Parameters(Pytree, dict):
         params: Dict,
         bijectors: Dict = None,
         trainables: Dict = None,
+        priors: Dict = None,
         training_history=None,
     ):
 
@@ -48,9 +52,13 @@ class Parameters(Pytree, dict):
         if trainables is None:
             trainables = jtu.tree_map(lambda _: True, params)
 
+        if priors is None:
+            priors = jtu.tree_map(lambda _: None, params)
+
         self._param_dict = params
         self._trainable_dict = trainables
         self._bijector_dict = bijectors
+        self._prior_dict = priors
         self._training_history = training_history
 
     def __repr__(self) -> str:
@@ -68,7 +76,11 @@ class Parameters(Pytree, dict):
 
     def update_params(self, value: Dict) -> Parameters:
         return Parameters(
-            value, self.bijectors, self.trainables, self.training_history
+            value,
+            self.bijectors,
+            self.trainables,
+            self.priors,
+            self.training_history,
         )
 
     @property
@@ -77,7 +89,11 @@ class Parameters(Pytree, dict):
 
     def update_bijectors(self, value: Dict) -> Parameters:
         return Parameters(
-            self.params, value, self.trainables, self.training_history
+            self.params,
+            value,
+            self.trainables,
+            self.priors,
+            self.training_history,
         )
 
     @property
@@ -86,7 +102,24 @@ class Parameters(Pytree, dict):
 
     def update_trainables(self, value: Dict) -> Parameters:
         return Parameters(
-            self.params, self.bijectors, value, self.training_history
+            self.params,
+            self.bijectors,
+            value,
+            self.priors,
+            self.training_history,
+        )
+
+    @property
+    def priors(self) -> Dict:
+        return self._prior_dict
+
+    def update_priors(self, value: Dict) -> Parameters:
+        return Parameters(
+            self.params,
+            self.bijectors,
+            self.trainables,
+            value,
+            self.training_history,
         )
 
     @property
@@ -98,6 +131,7 @@ class Parameters(Pytree, dict):
             self.params,
             self.bijectors,
             self.trainables,
+            self.priors,
             value,
         )
 
@@ -109,7 +143,7 @@ class Parameters(Pytree, dict):
         """
         return self.params, self.trainables, self.bijectors
 
-    def constrain(self):
+    def constrain(self) -> Parameters:
         return self.update_params(
             jtu.tree_map(
                 lambda param, trans: trans.forward(param),
@@ -118,7 +152,7 @@ class Parameters(Pytree, dict):
             )
         )
 
-    def unconstrain(self):
+    def unconstrain(self) -> Parameters:
         return self.update_params(
             jtu.tree_map(
                 lambda param, trans: trans.inverse(param),
@@ -149,6 +183,34 @@ class Parameters(Pytree, dict):
 
     def values(self):
         return self.params.values()
+
+    def log_prior_density(self) -> Array[Float, "1"]:
+        """
+        Recursive loop over pair of dictionaries that correspond to a parameter's
+        current value and the parameter's respective prior distribution. For
+        parameters where a prior distribution is specified, the log-prior density is
+        evaluated at the parameter's current value.
+
+        Args: params (Dict): Dictionary containing the current set of parameter
+            estimates. priors (Dict): Dictionary specifying the parameters' prior
+            distributions.
+
+        Returns:
+            Dict: The log-prior density, summed over all parameters.
+        """
+
+        def log_density(param, prior):
+            # TODO: Should a jax.lax.cond be used here? The method does jit-compile right now.
+            if prior is not None:
+                return jnp.sum(prior.log_prob(param))
+            else:
+                return jnp.array(0.0)
+
+        log_prior_density_dict = jtu.tree_map(
+            log_density, self.params, self.priors
+        )
+        leaves, _ = tree_flatten(log_prior_density_dict)
+        return sum(leaves)
 
 
 __all__ = ["Parameters"]
