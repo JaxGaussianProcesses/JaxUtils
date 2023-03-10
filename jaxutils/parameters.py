@@ -17,9 +17,12 @@ from __future__ import annotations
 
 import jax.tree_util as jtu
 import jax
+import jax.numpy as jnp
 from typing import Dict, Any
 from .bijectors import Identity
 from simple_pytree import Pytree, static_field
+from jax.tree_util import tree_flatten
+from jaxtyping import Float, Array
 
 
 class Parameters(Pytree, dict):
@@ -180,6 +183,34 @@ class Parameters(Pytree, dict):
 
     def values(self):
         return self.params.values()
+
+    def log_prior_density(self) -> Array[Float, "1"]:
+        """
+        Recursive loop over pair of dictionaries that correspond to a parameter's
+        current value and the parameter's respective prior distribution. For
+        parameters where a prior distribution is specified, the log-prior density is
+        evaluated at the parameter's current value.
+
+        Args: params (Dict): Dictionary containing the current set of parameter
+            estimates. priors (Dict): Dictionary specifying the parameters' prior
+            distributions.
+
+        Returns:
+            Dict: The log-prior density, summed over all parameters.
+        """
+
+        def log_density(param, prior):
+            # TODO: Should a jax.lax.cond be used here? The method does jit-compile right now.
+            if prior is not None:
+                return jnp.sum(prior.log_prob(param))
+            else:
+                return jnp.array(0.0)
+
+        log_prior_density_dict = jtu.tree_map(
+            log_density, self.params, self.priors
+        )
+        leaves, _ = tree_flatten(log_prior_density_dict)
+        return sum(leaves)
 
 
 __all__ = ["Parameters"]
