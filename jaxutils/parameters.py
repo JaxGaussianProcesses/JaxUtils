@@ -18,10 +18,10 @@ from __future__ import annotations
 import jax.tree_util as jtu
 import jax
 import jax.numpy as jnp
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 from .bijectors import Identity
 from simple_pytree import Pytree, static_field
-from jax.tree_util import tree_flatten
+from jax.tree_util import tree_flatten, tree_structure
 from jaxtyping import Float, Array
 
 
@@ -39,7 +39,7 @@ class Parameters(Pytree, dict):
 
     def __init__(
         self,
-        params: Dict,
+        params: Dict,  # TODO: Should we block inplace updates of this dict e.g., `params.params['a'] = jnp.array([2.])` would raise an issue.
         bijectors: Dict = None,
         trainables: Dict = None,
         priors: Dict = None,
@@ -70,11 +70,17 @@ class Parameters(Pytree, dict):
     def __setitem__(self, __name: str, __value: Any) -> None:
         return self._param_dict.__setitem__(__name, __value)
 
+    def __eq__(self, other: Parameters) -> bool:
+        return self.params == other.params  # TODO: Should priors be included?
+
     @property
     def params(self) -> Dict:
         return self._param_dict
 
+    # TODO: Benedict would make this awesome: `update_params(self, key, value)` e.g., `update_params('a.b.c', 1)`
+    # TODO: This should throw an error if the key-structure changes
     def update_params(self, value: Dict) -> Parameters:
+        self._validate_update(value, self.params, "params")
         return Parameters(
             value,
             self.bijectors,
@@ -83,11 +89,23 @@ class Parameters(Pytree, dict):
             self.training_history,
         )
 
+    @staticmethod
+    def _validate_update(value: dict, comparison: dict, name: str):
+        if tree_structure(comparison) != tree_structure(value):
+            print(tree_structure(comparison))
+            print(tree_structure(value))
+            raise ValueError(
+                f"The structure of the {name} has changed. Please ensure"
+                f" updates to {name} do not alter the strcuture."
+            )
+
     @property
     def bijectors(self) -> Dict:
         return self._bijector_dict
 
     def update_bijectors(self, value: Dict) -> Parameters:
+        # TODO: Traversal doesn't work for nested dicts where the value is a distrax object
+        # self._validate_update(value, self.bijectors, "bijectors")
         return Parameters(
             self.params,
             value,
@@ -101,6 +119,7 @@ class Parameters(Pytree, dict):
         return self._trainable_dict
 
     def update_trainables(self, value: Dict) -> Parameters:
+        self._validate_update(value, self.trainables, "trainables")
         return Parameters(
             self.params,
             self.bijectors,
@@ -114,6 +133,8 @@ class Parameters(Pytree, dict):
         return self._prior_dict
 
     def update_priors(self, value: Dict) -> Parameters:
+        # TODO: Traversal doesn't work for nested dicts where the value is a distrax object
+        # self._validate_update(value, self.priors, "priors")
         return Parameters(
             self.params,
             self.bijectors,
@@ -135,12 +156,15 @@ class Parameters(Pytree, dict):
             value,
         )
 
-    def unpack(self):
+    def unpack(
+        self,
+    ) -> Tuple[Dict[str, jax.Array], Dict[str, bool], Dict[str, Any]]:
         """Unpack the state into a tuple of parameters, trainables and bijectors.
 
         Returns:
             Tuple[Dict, Dict, Dict]: The parameters, trainables and bijectors.
         """
+        # TODO: Should priors be returned here?
         return self.params, self.trainables, self.bijectors
 
     def constrain(self) -> Parameters:
