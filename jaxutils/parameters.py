@@ -18,11 +18,12 @@ from __future__ import annotations
 import jax.tree_util as jtu
 import jax
 import jax.numpy as jnp
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Callable
 from .bijectors import Identity
 from simple_pytree import Pytree, static_field
 from jax.tree_util import tree_flatten, tree_structure
 from jaxtyping import Float, Array
+from distrax import Bijector, Distribution
 
 
 class Parameters(Pytree, dict):
@@ -77,7 +78,7 @@ class Parameters(Pytree, dict):
     def params(self) -> Dict:
         return self._param_dict
 
-    # TODO: Benedict would make this awesome: `update_params(self, key, value)` e.g., `update_params('a.b.c', 1)`
+    # TODO: Benedict would make this awesome: `update_params(self, key, value)` e.g., `update_single_param('a.b.c', 1)`
     # TODO: This should throw an error if the key-structure changes
     def update_params(self, value: Dict) -> Parameters:
         self._validate_update(value, self.params, "params")
@@ -90,10 +91,16 @@ class Parameters(Pytree, dict):
         )
 
     @staticmethod
-    def _validate_update(value: dict, comparison: dict, name: str):
-        if tree_structure(comparison) != tree_structure(value):
-            print(tree_structure(comparison))
-            print(tree_structure(value))
+    def _validate_update(
+        value: dict,
+        comparison: dict,
+        name: str,
+        lambda_expression: Callable[[Any], bool] = None,
+    ):
+        # TODO: Use `is_leaf` argument -> Dan will share code
+        if tree_structure(comparison, lambda_expression) != tree_structure(
+            value, lambda_expression
+        ):
             raise ValueError(
                 f"The structure of the {name} has changed. Please ensure"
                 f" updates to {name} do not alter the strcuture."
@@ -105,7 +112,12 @@ class Parameters(Pytree, dict):
 
     def update_bijectors(self, value: Dict) -> Parameters:
         # TODO: Traversal doesn't work for nested dicts where the value is a distrax object
-        # self._validate_update(value, self.bijectors, "bijectors")
+        self._validate_update(
+            value,
+            self.bijectors,
+            "bijectors",
+            lambda x: isinstance(x, Bijector),
+        )
         return Parameters(
             self.params,
             value,
@@ -134,7 +146,12 @@ class Parameters(Pytree, dict):
 
     def update_priors(self, value: Dict) -> Parameters:
         # TODO: Traversal doesn't work for nested dicts where the value is a distrax object
-        # self._validate_update(value, self.priors, "priors")
+        self._validate_update(
+            value,
+            self.priors,
+            "priors",
+            lambda x: isinstance(x, Distribution),
+        )
         return Parameters(
             self.params,
             self.bijectors,
@@ -156,6 +173,7 @@ class Parameters(Pytree, dict):
             value,
         )
 
+    # TODO: Drop if not required in any notebooks.
     def unpack(
         self,
     ) -> Tuple[Dict[str, jax.Array], Dict[str, bool], Dict[str, Any]]:
@@ -165,6 +183,7 @@ class Parameters(Pytree, dict):
             Tuple[Dict, Dict, Dict]: The parameters, trainables and bijectors.
         """
         # TODO: Should priors be returned here?
+        # TODO: Should we return a tuple or dict here?
         return self.params, self.trainables, self.bijectors
 
     def constrain(self) -> Parameters:
@@ -224,7 +243,7 @@ class Parameters(Pytree, dict):
         """
 
         def log_density(param, prior):
-            # TODO: Should a jax.lax.cond be used here? The method does jit-compile right now.
+            # TODO: Use a jax.lax.cond be used here?
             if prior is not None:
                 return jnp.sum(prior.log_prob(param))
             else:

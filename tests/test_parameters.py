@@ -149,8 +149,8 @@ def test_bijector_update():
     assert updated_params.priors == params.priors
 
     # Check that a key structure raises an error
-    # with pytest.raises(ValueError):
-    #     updated_params = params.update_params({"a": Identity})
+    with pytest.raises(ValueError):
+        updated_params = params.update_params({"a": Identity})
 
 
 def test_trainables_update():
@@ -189,8 +189,8 @@ def test_priors_update():
     assert updated_params.bijectors == params.bijectors
 
     # Check that a key structure raises an error
-    # with pytest.raises(ValueError):
-    #     updated_params = params.update_priors({"a": dx.Gamma(3.0, 3.0)})
+    with pytest.raises(ValueError):
+        updated_params = params.update_priors({"a": dx.Gamma(3.0, 3.0)})
 
 
 @pytest.mark.parametrize("set_priors", [True, False])
