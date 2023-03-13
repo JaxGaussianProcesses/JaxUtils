@@ -18,7 +18,7 @@ from __future__ import annotations
 import jax.tree_util as jtu
 import jax
 import jax.numpy as jnp
-from typing import Dict, Any, Tuple, Callable
+from typing import Any, Callable, Dict
 from .bijectors import Identity
 from simple_pytree import Pytree, static_field
 from jax.tree_util import tree_flatten, tree_structure
@@ -40,7 +40,8 @@ class Parameters(Pytree, dict):
 
     def __init__(
         self,
-        params: Dict,  # TODO: Should we block inplace updates of this dict e.g., `params.params['a'] = jnp.array([2.])` would raise an issue.
+        # TODO: Should block inplace updates e.g., `params.params['a']=jnp.array([2.])`
+        params: Dict,
         bijectors: Dict = None,
         trainables: Dict = None,
         priors: Dict = None,
@@ -78,7 +79,8 @@ class Parameters(Pytree, dict):
     def params(self) -> Dict:
         return self._param_dict
 
-    # TODO: Benedict would make this awesome: `update_params(self, key, value)` e.g., `update_single_param('a.b.c', 1)`
+    # TODO: Benedict would make this awesome: `update_params(self, key, value)`
+    #   e.g., `update_single_param('a.b.c', 1)`
     # TODO: This should throw an error if the key-structure changes
     def update_params(self, value: Dict) -> Parameters:
         self._validate_update(value, self.params, "params")
@@ -210,9 +212,7 @@ class Parameters(Pytree, dict):
 
     def stop_gradients(self):
         def _stop_grad(param: Dict, trainable: Dict) -> Dict:
-            return jax.lax.cond(
-                trainable, lambda x: x, jax.lax.stop_gradient, param
-            )
+            return jax.lax.cond(trainable, lambda x: x, jax.lax.stop_gradient, param)
 
         return self.update_params(
             jtu.tree_map(
@@ -253,9 +253,7 @@ class Parameters(Pytree, dict):
             else:
                 return jnp.array(0.0)
 
-        log_prior_density_dict = jtu.tree_map(
-            log_density, self.params, self.priors
-        )
+        log_prior_density_dict = jtu.tree_map(log_density, self.params, self.priors)
         leaves, _ = tree_flatten(log_prior_density_dict)
         return sum(leaves)
 

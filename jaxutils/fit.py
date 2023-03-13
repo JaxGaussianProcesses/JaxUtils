@@ -42,22 +42,32 @@ def fit(
     verbose: Optional[bool] = True,
     unroll: int = 1,
 ) -> Tuple[Parameters, Array]:
-    """Train a Module model with respect to a supplied Objective function. Optimisers used here should originate from Optax.
+    """Train a Module model with respect to a supplied Objective function. Optimisers
+    used here should originate from Optax.
 
     Args:
         params (Parameters): The parameters to be optimised.
-        objective (Callable[[Parameters, Dataset], Float[Array, "1"]]): The objective function that we are optimising with respect to.
+        objective (Callable[[Parameters, Dataset], Float[Array, "1"]]): The objective
+            function that we are optimising with respect to.
         train_data (Dataset): The training data to be used for the optimisation.
-        optim (GradientTransformation): The Optax optimiser that is to be used for learning a parameter set.
-        num_iters (Optional[int]): The number of optimisation steps to run. Defaults to 100.
-        batch_size (Optional[int]): The size of the mini-batch to use. Defaults to -1 (i.e. full batch).
-        key (Optional[KeyArray]): The random key to use for the optimisation batch selection. Defaults to jr.PRNGKey(42).
-        log_rate (Optional[int]): How frequently the objective function's value should be printed. Defaults to 10.
-        verbose (Optional[bool]): Whether to print the training loading bar. Defaults to True.
-        unroll (int): The number of unrolled steps to use for the optimisation. Defaults to 1.
+        optim (GradientTransformation): The Optax optimiser that is to be used for
+            learning a parameter set.
+        num_iters (Optional[int]): The number of optimisation steps to run. Defaults to
+            100.
+        batch_size (Optional[int]): The size of the mini-batch to use. Defaults to -1
+            (i.e. full batch).
+        key (Optional[KeyArray]): The random key to use for the optimisation batch
+            selection. Defaults to jr.PRNGKey(42).
+        log_rate (Optional[int]): How frequently the objective function's value should
+            be printed. Defaults to 10.
+        verbose (Optional[bool]): Whether to print the training loading bar. Defaults
+            to True.
+        unroll (int): The number of unrolled steps to use for the optimisation.
+            Defaults to 1.
 
     Returns:
-        Tuple[Module, Array]: A Tuple comprising the optimised model and training history respectively.
+        Tuple[Module, Array]: A Tuple comprising the optimised model and training
+            history respectively.
     """
 
     # Check inputs.
@@ -69,7 +79,7 @@ def fit(
     _check_log_rate(log_rate)
     _check_verbose(verbose)
 
-    # Unconstrained space loss function with stop-gradient rule for non-trainable params.
+    # Unconstrained space loss fn. with stop-gradient rule for non-trainable params.
     def loss(params: Parameters, batch: Dataset) -> Float[Array, "1"]:
         params = params.stop_gradients()
         return objective(params.constrain(), batch)

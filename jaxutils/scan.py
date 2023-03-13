@@ -19,13 +19,12 @@ from jax.experimental import host_callback as hcb
 from tqdm.auto import trange
 
 import jax.tree_util as jtu
+import jax
+import jax.numpy as jnp
 
 Carry = TypeVar("Carry")
 X = TypeVar("X")
 Y = TypeVar("Y")
-
-import jax
-import jax.numpy as jnp
 
 
 def _callback(cond: bool, func: Callable, *args: Any) -> None:
@@ -75,10 +74,12 @@ def vscan(
         (45, DeviceArray([ 0,  1,  3,  6, 10, 15, 21, 28, 36, 45], dtype=int32))
 
     Args:
-        f (Callable[[Carry, X], Tuple[Carry, Y]]): A function that takes in a carry and an input and returns a tuple of a new carry and an output.
+        f (Callable[[Carry, X], Tuple[Carry, Y]]): A function that takes in a carry and
+            an input and returns a tuple of a new carry and an output.
         init (Carry): The initial carry.
         xs (X): The inputs.
-        length (Optional[int]): The length of the inputs. If None, then the length of the inputs is inferred.
+        length (Optional[int]): The length of the inputs. If None, then the length of
+            the inputs is inferred.
         reverse (bool): Whether to scan in reverse.
         unroll (int): The number of iterations to unroll.
         log_rate (int): The rate at which to log the progress bar.
@@ -88,8 +89,10 @@ def vscan(
         Tuple[Carry, List[Y]]: A tuple of the final carry and the outputs.
     """
 
-    # TODO: Scope out lower level API for jax.lax.scan, to avoid the need for finding the length of the inputs / check inputs.
-    # TODO: Scope out lower level API for tqdm, for more control over the progress bar. Need to check this.
+    # TODO: Scope out lower level API for jax.lax.scan, to avoid the need for finding
+    #   the length of the inputs / check inputs.
+    # TODO: Scope out lower level API for tqdm, for more control over the progress bar.
+    #   Need to check this.
     _xs_flat = jtu.tree_leaves(xs)
     _length = length if length is not None else len(_xs_flat[0])
     _iter_nums = jnp.arange(_length)

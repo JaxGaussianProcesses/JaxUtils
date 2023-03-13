@@ -17,9 +17,7 @@ def build_params(
     set_bijectors: bool,
 ) -> tp.Tuple[Parameters, tp.Dict]:
     priors = (
-        {"a": dx.Normal(0.0, 1.0), "b": dx.Normal(0.0, 1.0)}
-        if set_priors
-        else None
+        {"a": dx.Normal(0.0, 1.0), "b": dx.Normal(0.0, 1.0)} if set_priors else None
     )
     trainables = {"a": True, "b": True} if set_trainables else None
     bijections = {"a": Identity, "b": Identity} if set_bijectors else None
@@ -92,9 +90,7 @@ def test_constrain_unconstrain(jit_compile):
     bijections = {"a": Softplus, "b": Softplus}
     params = Parameters(params=param_vals, bijectors=bijections)
 
-    unconstrain_fn = (
-        jax.jit(params.unconstrain) if jit_compile else params.unconstrain
-    )
+    unconstrain_fn = jax.jit(params.unconstrain) if jit_compile else params.unconstrain
 
     unconstrained_params = unconstrain_fn()
 

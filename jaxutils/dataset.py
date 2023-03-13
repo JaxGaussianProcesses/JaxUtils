@@ -39,7 +39,11 @@ class Dataset(Pytree):
 
     def __repr__(self) -> str:
         """Returns a string representation of the dataset."""
-        return f"- Number of observations: {self.n}\n- Input dimension: {self.in_dim}\n- Output dimension: {self.out_dim}"
+        repr = (
+            f"- Number of observations: {self.n}\n- Input dimension:"
+            f" {self.in_dim}\n- Output dimension: {self.out_dim}"
+        )
+        return repr
 
     def is_supervised(self) -> bool:
         """Returns `True` if the dataset is supervised."""
@@ -77,7 +81,8 @@ def _check_shape(X: Float[Array, "N D"], y: Float[Array, "N Q"]) -> None:
     if X is not None and y is not None:
         if X.shape[0] != y.shape[0]:
             raise ValueError(
-                f"Inputs, X, and outputs, y, must have the same number of rows. Got X.shape={X.shape} and y.shape={y.shape}."
+                "Inputs, X, and outputs, y, must have the same number of rows."
+                f" Got X.shape={X.shape} and y.shape={y.shape}."
             )
 
     if X is not None and X.ndim != 2:
