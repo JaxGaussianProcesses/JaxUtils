@@ -204,20 +204,26 @@ def test_unpack(set_priors, set_trainables, set_bijectors):
         set_trainables,
         set_bijectors,
     )
-    param_vals, trainables, bijectors = params.unpack()
+    contents = params.unpack()
 
-    assert param_vals == truth["params"]
+    assert contents["params"] == truth["params"]
 
     if set_trainables:
-        assert trainables == truth["trainables"]
+        assert contents["trainables"] == truth["trainables"]
     else:
-        assert trainables == {"a": True, "b": True}
+        assert contents["trainables"] == {"a": True, "b": True}
 
     if set_bijectors:
-        assert bijectors == truth["bijectors"]
+        assert contents["bijectors"] == truth["bijectors"]
     else:
-        assert bijectors == {"a": Identity, "b": Identity}
+        assert contents["bijectors"] == {"a": Identity, "b": Identity}
 
-    assert isinstance(param_vals, dict)
-    assert isinstance(trainables, dict)
-    assert isinstance(bijectors, dict)
+    if set_priors:
+        assert contents["priors"] == truth["priors"]
+    else:
+        assert contents["priors"] == {"a": None, "b": None}
+
+    assert isinstance(contents["params"], dict)
+    assert isinstance(contents["trainables"], dict)
+    assert isinstance(contents["bijectors"], dict)
+    assert isinstance(contents["priors"], dict)

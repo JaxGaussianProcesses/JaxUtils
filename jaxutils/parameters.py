@@ -111,7 +111,6 @@ class Parameters(Pytree, dict):
         return self._bijector_dict
 
     def update_bijectors(self, value: Dict) -> Parameters:
-        # TODO: Traversal doesn't work for nested dicts where the value is a distrax object
         self._validate_update(
             value,
             self.bijectors,
@@ -145,7 +144,6 @@ class Parameters(Pytree, dict):
         return self._prior_dict
 
     def update_priors(self, value: Dict) -> Parameters:
-        # TODO: Traversal doesn't work for nested dicts where the value is a distrax object
         self._validate_update(
             value,
             self.priors,
@@ -176,15 +174,21 @@ class Parameters(Pytree, dict):
     # TODO: Drop if not required in any notebooks.
     def unpack(
         self,
-    ) -> Tuple[Dict[str, jax.Array], Dict[str, bool], Dict[str, Any]]:
+    ) -> Dict[str, Dict[str, Any]]:
         """Unpack the state into a tuple of parameters, trainables and bijectors.
 
         Returns:
-            Tuple[Dict, Dict, Dict]: The parameters, trainables and bijectors.
+            Dict[str, Dict[str, Any]]: The parameters, trainables and bijectors.
         """
         # TODO: Should priors be returned here?
         # TODO: Should we return a tuple or dict here?
-        return self.params, self.trainables, self.bijectors
+        contents = {
+            "params": self.params,
+            "trainables": self.trainables,
+            "bijectors": self.bijectors,
+            "priors": self.priors,
+        }
+        return contents
 
     def constrain(self) -> Parameters:
         return self.update_params(
