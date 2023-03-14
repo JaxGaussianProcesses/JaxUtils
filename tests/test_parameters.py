@@ -262,3 +262,24 @@ def test_combine(set_priors, set_trainables, set_bijectors):
         assert p.priors == {"x": truth1["priors"], "y": truth2["priors"]}
     else:
         assert p.priors == {"x": {"a": None}, "y": {"b": None}}
+
+
+@pytest.mark.parametrize("prior", [dx.Normal(0, 1), dx.Gamma(2.0, 2.0), None])
+@pytest.mark.parametrize("trainable", [True, False])
+@pytest.mark.parametrize("bijector", [Softplus, Identity])
+def test_add_parameter(prior, trainable, bijector):
+    param_val = {"a": jnp.array([1.0])}
+    p = Parameters(param_val)
+    p.add_parameter(
+        "b",
+        jnp.array([2.0]),
+        prior=prior,
+        trainability=trainable,
+        bijector=bijector,
+    )
+
+    assert "b" in p.keys()
+    assert p["b"] == jnp.array([2.0])
+    assert p.trainables["b"] == trainable
+    assert p.bijectors["b"] == bijector
+    assert p.priors["b"] == prior

@@ -215,6 +215,28 @@ class Parameters(Pytree, dict):
             )
         )
 
+    def add_parameter(
+        self,
+        key: str,
+        value: jax.Array,
+        prior: Distribution = None,
+        bijector: Bijector = Identity,
+        trainability: bool = True,
+    ) -> None:
+        """Add a parameter to the Parameters object.
+
+        Args:
+            key (str): The name of the parameter.
+            value (jax.Array): The value of the parameter.
+            prior (Distribution): The prior distribution of the parameter.
+            bijector (Bijector): The bijector to transform the parameter.
+            trainability (bool): The trainability of the parameter.
+        """
+        self.params[key] = value
+        self.priors[key] = prior
+        self.bijectors[key] = bijector
+        self.trainables[key] = trainability
+
     def stop_gradients(self) -> Parameters:
         def _stop_grad(param: Dict, trainable: Dict) -> Dict:
             return jax.lax.cond(trainable, lambda x: x, jax.lax.stop_gradient, param)
