@@ -24,6 +24,7 @@ from simple_pytree import Pytree, static_field
 from jax.tree_util import tree_flatten, tree_structure
 from jaxtyping import Float, Array
 from distrax import Bijector, Distribution
+from collections.abc import KeysView, ValuesView, ItemsView
 
 
 class Parameters(Pytree, dict):
@@ -73,15 +74,12 @@ class Parameters(Pytree, dict):
         return self._param_dict.__setitem__(__name, __value)
 
     def __eq__(self, other: Parameters) -> bool:
-        return self.params == other.params  # TODO: Should priors be included?
+        return self.params == other.params
 
     @property
     def params(self) -> Dict:
         return self._param_dict
 
-    # TODO: Benedict would make this awesome: `update_params(self, key, value)`
-    #   e.g., `update_single_param('a.b.c', 1)`
-    # TODO: This should throw an error if the key-structure changes
     def update_params(self, value: Dict) -> Parameters:
         self._validate_update(value, self.params, "params")
         return Parameters(
@@ -99,7 +97,6 @@ class Parameters(Pytree, dict):
         name: str,
         lambda_expression: Callable[[Any], bool] = None,
     ):
-        # TODO: Use `is_leaf` argument -> Dan will share code
         if tree_structure(comparison, lambda_expression) != tree_structure(
             value, lambda_expression
         ):
@@ -173,7 +170,6 @@ class Parameters(Pytree, dict):
             value,
         )
 
-    # TODO: Drop if not required in any notebooks.
     def unpack(
         self,
     ) -> Dict[str, Dict[str, Any]]:
@@ -182,8 +178,6 @@ class Parameters(Pytree, dict):
         Returns:
             Dict[str, Dict[str, Any]]: The parameters, trainables and bijectors.
         """
-        # TODO: Should priors be returned here?
-        # TODO: Should we return a tuple or dict here?
         contents = {
             "params": self.params,
             "trainables": self.trainables,
@@ -193,6 +187,11 @@ class Parameters(Pytree, dict):
         return contents
 
     def constrain(self) -> Parameters:
+        """Use the bijectors to transform the parameters to a constrained space.
+
+        Returns:
+            Parameters: A new Parameters object with the constrained parameter values.
+        """
         return self.update_params(
             jtu.tree_map(
                 lambda param, trans: trans.forward(param),
@@ -202,6 +201,12 @@ class Parameters(Pytree, dict):
         )
 
     def unconstrain(self) -> Parameters:
+        """Use the bijectors to transform the parameters to an unconstrained space.
+
+        Returns:
+            Parameters: A new Parameters object with the unconstrained parameter
+                values.
+        """
         return self.update_params(
             jtu.tree_map(
                 lambda param, trans: trans.inverse(param),
@@ -210,7 +215,7 @@ class Parameters(Pytree, dict):
             )
         )
 
-    def stop_gradients(self):
+    def stop_gradients(self) -> Parameters:
         def _stop_grad(param: Dict, trainable: Dict) -> Dict:
             return jax.lax.cond(trainable, lambda x: x, jax.lax.stop_gradient, param)
 
@@ -222,13 +227,16 @@ class Parameters(Pytree, dict):
             )
         )
 
-    def items(self):
+    def items(self) -> ItemsView:
+        """Return the items of the parameters."""
         return self.params.items()
 
-    def keys(self):
+    def keys(self) -> KeysView:
+        """Return the keys of the parameters."""
         return self.params.keys()
 
-    def values(self):
+    def values(self) -> ValuesView:
+        """Return the values of the parameters."""
         return self.params.values()
 
     def log_prior_density(self) -> Array[Float, "1"]:
@@ -256,6 +264,37 @@ class Parameters(Pytree, dict):
         log_prior_density_dict = jtu.tree_map(log_density, self.params, self.priors)
         leaves, _ = tree_flatten(log_prior_density_dict)
         return sum(leaves)
+
+    def combine(self, other: Parameters, left_key: str, right_key: str) -> Parameters:
+        """Combine two sets of parameters into a single set of parameters.
+
+        Args:
+            other (Parameters): The other set of parameters.
+            left_key (str): The key to use for the left (i.e., `self`) set of
+                parameters.
+            right_key (str): The key to use for the right (i.e., `other`) set of
+                parameters
+
+        Returns:
+            Parameters: A nested set of parameters.
+        """
+
+        self_contents = self.unpack()
+        other_contents = other.unpack()
+
+        combined_contents = {}
+        for k in self_contents.keys():
+            combined_contents[k] = {
+                left_key: self_contents[k],
+                right_key: other_contents[k],
+            }
+
+        return Parameters(
+            params=combined_contents["params"],
+            bijectors=combined_contents["bijectors"],
+            trainables=combined_contents["trainables"],
+            priors=combined_contents["priors"],
+        )
 
 
 __all__ = ["Parameters"]

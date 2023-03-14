@@ -16,11 +16,9 @@ def build_params(
     set_trainables: bool,
     set_bijectors: bool,
 ) -> tp.Tuple[Parameters, tp.Dict]:
-    priors = (
-        {"a": dx.Normal(0.0, 1.0), "b": dx.Normal(0.0, 1.0)} if set_priors else None
-    )
-    trainables = {"a": True, "b": True} if set_trainables else None
-    bijections = {"a": Identity, "b": Identity} if set_bijectors else None
+    priors = {k: dx.Normal(0.0, 1.0) for k in param_vals.keys()} if set_priors else None
+    trainables = {k: True for k in param_vals.keys()} if set_trainables else None
+    bijections = {k: Identity for k in param_vals.keys()} if set_bijectors else None
     params = Parameters(
         params=param_vals,
         priors=priors,
@@ -189,6 +187,25 @@ def test_priors_update():
         updated_params = params.update_priors({"a": dx.Gamma(3.0, 3.0)})
 
 
+def param_equality(params, truth, set_priors, set_trainables, set_bijectors):
+    assert params["params"] == truth["params"]
+
+    if set_trainables:
+        assert params["trainables"] == truth["trainables"]
+    else:
+        assert params["trainables"] == {k: True for k in truth["params"]}
+
+    if set_bijectors:
+        assert params["bijectors"] == truth["bijectors"]
+    else:
+        assert params["bijectors"] == {k: Identity for k in truth["params"]}
+
+    if set_priors:
+        assert params["priors"] == truth["priors"]
+    else:
+        assert params["priors"] == {k: None for k in truth["params"]}
+
+
 @pytest.mark.parametrize("set_priors", [True, False])
 @pytest.mark.parametrize("set_trainables", [True, False])
 @pytest.mark.parametrize("set_bijectors", [True, False])
@@ -202,24 +219,46 @@ def test_unpack(set_priors, set_trainables, set_bijectors):
     )
     contents = params.unpack()
 
-    assert contents["params"] == truth["params"]
-
-    if set_trainables:
-        assert contents["trainables"] == truth["trainables"]
-    else:
-        assert contents["trainables"] == {"a": True, "b": True}
-
-    if set_bijectors:
-        assert contents["bijectors"] == truth["bijectors"]
-    else:
-        assert contents["bijectors"] == {"a": Identity, "b": Identity}
-
-    if set_priors:
-        assert contents["priors"] == truth["priors"]
-    else:
-        assert contents["priors"] == {"a": None, "b": None}
-
+    param_equality(contents, truth, set_priors, set_trainables, set_bijectors)
     assert isinstance(contents["params"], dict)
     assert isinstance(contents["trainables"], dict)
     assert isinstance(contents["bijectors"], dict)
     assert isinstance(contents["priors"], dict)
+
+
+@pytest.mark.parametrize("set_priors", [True, False])
+@pytest.mark.parametrize("set_trainables", [True, False])
+@pytest.mark.parametrize("set_bijectors", [True, False])
+def test_combine(set_priors, set_trainables, set_bijectors):
+    p1, truth1 = build_params(
+        {"a": jnp.array([1.0])}, set_priors, set_trainables, set_bijectors
+    )
+    p2, truth2 = build_params(
+        {"b": jnp.array([2.0])}, set_priors, set_trainables, set_bijectors
+    )
+
+    p = p1.combine(p2, left_key="x", right_key="y")
+    assert isinstance(p, Parameters)
+    assert p.params == {"x": truth1["params"], "y": truth2["params"]}
+    assert list(p.keys()) == ["x", "y"]
+
+    if set_trainables:
+        assert p.trainables == {
+            "x": truth1["trainables"],
+            "y": truth2["trainables"],
+        }
+    else:
+        assert p.trainables == {"x": {"a": True}, "y": {"b": True}}
+
+    if set_bijectors:
+        assert p.bijectors == {
+            "x": truth1["bijectors"],
+            "y": truth2["bijectors"],
+        }
+    else:
+        assert p.bijectors == {"x": {"a": Identity}, "y": {"b": Identity}}
+
+    if set_priors:
+        assert p.priors == {"x": truth1["priors"], "y": truth2["priors"]}
+    else:
+        assert p.priors == {"x": {"a": None}, "y": {"b": None}}
