@@ -218,7 +218,9 @@ class Parameters(Pytree, dict):
     def add_parameter(
         self,
         key: str,
-        value: jax.Array,
+        *,
+        parameter: Parameters = None,
+        value: jax.Array = None,
         prior: Distribution = None,
         bijector: Bijector = Identity,
         trainability: bool = True,
@@ -232,10 +234,20 @@ class Parameters(Pytree, dict):
             bijector (Bijector): The bijector to transform the parameter.
             trainability (bool): The trainability of the parameter.
         """
-        self.params[key] = value
-        self.priors[key] = prior
-        self.bijectors[key] = bijector
-        self.trainables[key] = trainability
+        if key in self.keys():
+            raise ValueError(f"Parameter with key: {key} already exists.")
+        else:
+            if parameter is None:
+                self.params[key] = value
+                self.priors[key] = prior
+                self.bijectors[key] = bijector
+                self.trainables[key] = trainability
+            else:
+                contents = parameter.unpack()
+                self.params[key] = contents["params"]
+                self.priors[key] = contents["priors"]
+                self.bijectors[key] = contents["bijectors"]
+                self.trainables[key] = contents["trainables"]
 
     def stop_gradients(self) -> Parameters:
         def _stop_grad(param: Dict, trainable: Dict) -> Dict:

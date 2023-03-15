@@ -268,11 +268,10 @@ def test_combine(set_priors, set_trainables, set_bijectors):
 @pytest.mark.parametrize("trainable", [True, False])
 @pytest.mark.parametrize("bijector", [Softplus, Identity])
 def test_add_parameter(prior, trainable, bijector):
-    param_val = {"a": jnp.array([1.0])}
-    p = Parameters(param_val)
+    p = Parameters({"a": jnp.array([1.0])})
     p.add_parameter(
-        "b",
-        jnp.array([2.0]),
+        key="b",
+        value=jnp.array([2.0]),
         prior=prior,
         trainability=trainable,
         bijector=bijector,
@@ -283,3 +282,26 @@ def test_add_parameter(prior, trainable, bijector):
     assert p.trainables["b"] == trainable
     assert p.bijectors["b"] == bijector
     assert p.priors["b"] == prior
+
+    # Test adding a parameter with a parameter object
+    p = Parameters({"a": jnp.array([1.0])})
+    p2 = Parameters(
+        params={"c": jnp.array([2.0])},
+        bijectors={"c": bijector},
+        priors={"c": prior},
+        trainables={"c": trainable},
+    )
+    p.add_parameter(
+        key="b",
+        parameter=p2,
+    )
+
+    assert "b" in p.keys()
+    assert p["b"] == p2.params
+    assert p.trainables["b"] == p2.trainables
+    assert p.bijectors["b"] == p2.bijectors
+    assert p.priors["b"] == p2.priors
+
+    # Check that trying to overwrite a parameter raises an error
+    with pytest.raises(ValueError):
+        p.add_parameter(key="b", parameter=p2)
