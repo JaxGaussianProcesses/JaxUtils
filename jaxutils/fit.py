@@ -35,7 +35,7 @@ def fit(
     train_data: Dataset,
     optim: ox.GradientTransformation,
     params: Parameters = None,
-    fn: Callable[[Parameters, Dataset], Float[Array, "1"]],
+    fn: Callable[[Parameters, Dataset], Float[Array, "1"]] = None,
     num_iters: Optional[int] = 100,
     batch_size: Optional[int] = -1,
     key: Optional[KeyArray] = jr.PRNGKey(42),
