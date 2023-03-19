@@ -32,8 +32,11 @@ class Objective(Pytree):
     model: Any = static_field()
 
     @abc.abstractmethod
-    def __call__(self, params: Parameters, train_data: Dataset) -> Float[Array, "1"]:
+    def minimise(self, params: Parameters, train_data: Dataset) -> Float[Array, "1"]:
         raise NotImplementedError
+
+    def __call__(self, params: Parameters, train_data: Dataset) -> Float[Array, "1"]:
+        return self.minimise(params, train_data)
 
 
 def test_simple_linear_model():
@@ -47,23 +50,25 @@ def test_simple_linear_model():
         def __call__(self, params: Parameters, x):
             return params["weight"] * x + params["bias"]
 
-        def init_params(self):
+        def init_params(self, key):
             return Parameters({"weight": 1.0, "bias": 1.0})
 
     # (3) Define your objective:
     class MeanSquaredError(Objective):
-        def __call__(
+        def minimise(
             self, params: Parameters, train_data: Dataset
         ) -> Float[Array, "1"]:
             return jnp.mean((train_data.y - self.model(params, train_data.X)) ** 2)
 
+        def init_params(self, key):
+            return self.model.init_params(key)
+
     model = LinearModel()
     objective = MeanSquaredError(model)
-    params = model.init_params()
+    params = model.init_params(jr.PRNGKey(0))
 
     # (4) Train!
     trained_params = fit(
-        params=params,
         objective=objective,
         train_data=D,
         optim=ox.sgd(0.001),

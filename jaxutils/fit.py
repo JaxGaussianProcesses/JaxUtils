@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Optional, Tuple, Callable
+from typing import Callable, Optional
 
 import jax
 import jax.random as jr
@@ -42,7 +42,7 @@ def fit(
     log_rate: Optional[int] = 10,
     verbose: Optional[bool] = True,
     unroll: int = 1,
-) -> Tuple[Parameters, Array]:
+) -> Parameters:
     """Train a Module model with respect to a supplied Objective function. Optimisers
     used here should originate from Optax.
 
@@ -67,7 +67,7 @@ def fit(
             Defaults to 1.
 
     Returns:
-        Tuple[Module, Array]: A Tuple comprising the optimised model and training
+        Parameters: A Tuple comprising the optimised model and training
             history respectively.
     """
     if params is None:
