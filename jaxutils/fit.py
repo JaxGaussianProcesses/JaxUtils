@@ -31,10 +31,11 @@ from .scan import vscan
 
 def fit(
     *,
-    params: Parameters,
-    objective: Callable[[Parameters, Dataset], Float[Array, "1"]],
+    objective,
     train_data: Dataset,
     optim: ox.GradientTransformation,
+    params: Parameters = None,
+    fn: Callable[[Parameters, Dataset], Float[Array, "1"]],
     num_iters: Optional[int] = 100,
     batch_size: Optional[int] = -1,
     key: Optional[KeyArray] = jr.PRNGKey(42),
@@ -69,6 +70,11 @@ def fit(
         Tuple[Module, Array]: A Tuple comprising the optimised model and training
             history respectively.
     """
+    if params is None:
+        params = objective.init_params(key)
+
+    if fn is None:
+        fn = jax.jit(objective.minimise)
 
     # Check inputs.
     _check_train_data(train_data)
@@ -82,7 +88,7 @@ def fit(
     # Unconstrained space loss fn. with stop-gradient rule for non-trainable params.
     def loss(params: Parameters, batch: Dataset) -> Float[Array, "1"]:
         params = params.stop_gradients()
-        return objective(params.constrain(), batch)
+        return fn(params.constrain(), batch)
 
     # Unconstrained space params.
     params = params.unconstrain()
