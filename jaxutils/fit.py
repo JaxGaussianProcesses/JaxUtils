@@ -74,7 +74,7 @@ def fit(
         params = objective.init_params(key)
 
     if fn is None:
-        fn = jax.jit(objective.minimise)
+        fn = jax.jit(objective.step)
 
     # Check inputs.
     _check_train_data(train_data)

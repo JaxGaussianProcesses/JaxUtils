@@ -32,11 +32,11 @@ class Objective(Pytree):
     model: Any = static_field()
 
     @abc.abstractmethod
-    def minimise(self, params: Parameters, train_data: Dataset) -> Float[Array, "1"]:
+    def step(self, params: Parameters, train_data: Dataset) -> Float[Array, "1"]:
         raise NotImplementedError
 
     def __call__(self, params: Parameters, train_data: Dataset) -> Float[Array, "1"]:
-        return self.minimise(params, train_data)
+        return self.step(params, train_data)
 
 
 def test_simple_linear_model():
@@ -55,9 +55,7 @@ def test_simple_linear_model():
 
     # (3) Define your objective:
     class MeanSquaredError(Objective):
-        def minimise(
-            self, params: Parameters, train_data: Dataset
-        ) -> Float[Array, "1"]:
+        def step(self, params: Parameters, train_data: Dataset) -> Float[Array, "1"]:
             return jnp.mean((train_data.y - self.model(params, train_data.X)) ** 2)
 
         def init_params(self, key):
