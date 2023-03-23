@@ -44,7 +44,7 @@ REQUIRES = [
     "jaxtyping",
     "optax",
     "tqdm",
-    "simple-pytree",
+    "https://github.com/cgarciae/simple-pytree/archive/refs/heads/improve-new-handling.zip",
     "distrax",
 ]
 
