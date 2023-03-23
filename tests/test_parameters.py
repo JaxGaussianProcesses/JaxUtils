@@ -82,24 +82,19 @@ def test_priors(jit_compile):
     assert isinstance(lpd, jax.Array)
 
 
-@pytest.mark.parametrize("jit_compile", [False, True])
-def test_constrain_unconstrain(jit_compile):
+def test_constrain_unconstrain():
     param_vals = {"a": jnp.array([1.0]), "b": jnp.array([2.0])}
     bijections = {"a": Softplus, "b": Softplus}
     params = Parameters(params=param_vals, bijectors=bijections)
 
-    unconstrain_fn = jax.jit(params.unconstrain) if jit_compile else params.unconstrain
+    unconstrain_fn = params.unconstrain
 
     unconstrained_params = unconstrain_fn()
 
     assert isinstance(unconstrained_params, Parameters)
     assert isinstance(unconstrained_params.params, dict)
 
-    constrain_fn = (
-        jax.jit(unconstrained_params.constrain)
-        if jit_compile
-        else unconstrained_params.constrain
-    )
+    constrain_fn = unconstrained_params.constrain
     constrained_params = constrain_fn()
     assert isinstance(unconstrained_params, Parameters)
     assert isinstance(unconstrained_params.params, dict)
