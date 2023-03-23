@@ -17,6 +17,9 @@ jobs:
           pkg-manager: pip-dist
           path-args: .[dev]
       - run:
+          name: Simple PyTree
+          command: pip install https://github.com/cgarciae/simple-pytree/archive/refs/heads/improve-new-handling.zip
+      - run:
           name: Run tests
           command: pytest --cov=./ --cov-report=xml
       - run:
