@@ -13,21 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-
 from .pytree import PyTree
-from .data import Dataset, verify_dataset
-from .dict import (
-    concat_dictionaries,
-    merge_dictionaries,
-    sort_dictionary,
-    dict_array_coercion,
-)
-from .parameters import (
-    ParameterState,
-    initialise,
-    recursive_items,
-    recursive_complete,
-)
+from .parameters import Parameters
+from .bijectors import Identity, Softplus, FillScaleTriL
+from .dataset import Dataset
+from .fit import fit, get_batch
+from .scan import vscan
 
 __authors__ = "Thomas Pinder, Daniel Dodd"
 __license__ = "MIT"
@@ -39,19 +30,16 @@ __contributors__ = (
     "https://github.com//JaxGaussianProcesses/JaxUtils/graphs/contributors"
 )
 
-
 __all__ = [
     "PyTree",
+    "Parameters",
+    "Identity",
+    "Softplus",
+    "FillScaleTriL",
     "Dataset",
-    "verify_dataset",
-    "concat_dictionaries",
-    "merge_dictionaries",
-    "sort_dictionary",
-    "dict_array_coercion",
-    "ParameterState",
-    "initialise",
-    "recursive_items",
-    "recursive_complete",
+    "fit",
+    "get_batch",
+    "vscan",
 ]
 
 from . import _version

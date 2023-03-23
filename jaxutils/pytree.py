@@ -15,12 +15,15 @@
 
 import abc
 import jax
-
 from typing import Any
+
+# TODO: To drop this in place of simple_pytree's Pytree.
 
 
 class PyTree(metaclass=abc.ABCMeta):
-    """An abstract base class for a JAX compatible pytree. Adapted from `distrax._src.utils.jittable.Jittable`."""
+    """An abstract base class for a JAX compatible pytree. Adapted from
+    `distrax._src.utils.jittable.Jittable`.
+    """
 
     def __new__(cls, *args, **kwargs):
         # Discard the parameters to this function because the constructor is not

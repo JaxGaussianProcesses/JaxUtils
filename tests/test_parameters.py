@@ -1,273 +1,302 @@
-# # Copyright 2022 The GPJax Contributors. All Rights Reserved.
-# #
-# # Licensed under the Apache License, Version 2.0 (the "License");
-# # you may not use this file except in compliance with the License.
-# # You may obtain a copy of the License at
-# #
-# #     http://www.apache.org/licenses/LICENSE-2.0
-# #
-# # Unless required by applicable law or agreed to in writing, software
-# # distributed under the License is distributed on an "AS IS" BASIS,
-# # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# # See the License for the specific language governing permissions and
-# # limitations under the License.
-# # ==============================================================================
+from jaxutils.parameters import Parameters
+from jaxutils.bijectors import Softplus, Identity
+import jax
+import pytest
+import jax.numpy as jnp
+import distrax as dx
+from jax.config import config
+import typing as tp
 
-# import typing as tp
-
-# import distrax as dx
-# import jax.numpy as jnp
-# import jax.random as jr
-# import pytest
-# from jax.config import config
-
-# from gpjax.gps import Prior
-# from gpjax.kernels import RBF
-# from gpjax.likelihoods import Bernoulli, Gaussian
-# from gpjax.parameters import (
-#     build_bijectors,
-#     build_trainables,
-#     constrain,
-#     copy_dict_structure,
-#     evaluate_priors,
-#     initialise,
-#     log_density,
-#     prior_checks,
-#     recursive_complete,
-#     recursive_items,
-#     structure_priors,
-#     unconstrain,
-# )
-
-# # Enable Float64 for more stable matrix inversions.
-# config.update("jax_enable_x64", True)
-
-# #########################
-# # Test base functionality
-# #########################
-# @pytest.mark.parametrize("lik", [Gaussian])
-# def test_initialise(lik):
-#     key = jr.PRNGKey(123)
-#     posterior = Prior(kernel=RBF()) * lik(num_datapoints=10)
-#     params, _, _ = initialise(posterior, key).unpack()
-#     assert list(sorted(params.keys())) == [
-#         "kernel",
-#         "likelihood",
-#         "mean_function",
-#     ]
+config.update("jax_enable_x64", True)
 
 
-# def test_non_conjugate_initialise():
-#     posterior = Prior(kernel=RBF()) * Bernoulli(num_datapoints=10)
-#     params, _, _ = initialise(posterior, jr.PRNGKey(123)).unpack()
-#     assert list(sorted(params.keys())) == [
-#         "kernel",
-#         "latent",
-#         "likelihood",
-#         "mean_function",
-#     ]
+def build_params(
+    param_vals: tp.Dict,
+    set_priors: bool,
+    set_trainables: bool,
+    set_bijectors: bool,
+) -> tp.Tuple[Parameters, tp.Dict]:
+    priors = {k: dx.Normal(0.0, 1.0) for k in param_vals.keys()} if set_priors else None
+    trainables = {k: True for k in param_vals.keys()} if set_trainables else None
+    bijections = {k: Identity for k in param_vals.keys()} if set_bijectors else None
+    params = Parameters(
+        params=param_vals,
+        priors=priors,
+        bijectors=bijections,
+        trainables=trainables,
+    )
+    truth = {
+        "params": param_vals,
+        "priors": priors,
+        "trainables": trainables,
+        "bijectors": bijections,
+    }
+    return params, truth
 
 
-# #########################
-# # Test priors
-# #########################
-# @pytest.mark.parametrize("x", [-1.0, 0.0, 1.0])
-# def test_lpd(x):
-#     val = jnp.array(x)
-#     dist = dx.Normal(loc=0.0, scale=1.0)
-#     lpd = log_density(val, dist)
-#     assert lpd is not None
-#     assert log_density(val, None) == 0.0
+@pytest.mark.parametrize("jit_compile", [False, True])
+def test_priors(jit_compile):
+    # Vanilla test for case where every parameter has a defined prior
+    param_vals = {"a": jnp.array([1.0]), "b": jnp.array([2.0])}
+    priors = {"a": dx.Normal(0.0, 1.0), "b": dx.Normal(0.0, 1.0)}
+
+    params = Parameters(params=param_vals, priors=priors)
+    if jit_compile:
+        lpd = jax.jit(params.log_prior_density)()
+    else:
+        lpd = params.log_prior_density()
+    assert pytest.approx(lpd, 0.00001) == -4.3378773
+    assert isinstance(lpd, jax.Array)
+
+    # Check fn. works for no priors
+    priors = {"a": None, "b": None}
+    params = Parameters(params=param_vals, priors=priors)
+    if jit_compile:
+        lpd = jax.jit(params.log_prior_density)()
+    else:
+        lpd = params.log_prior_density()
+    assert pytest.approx(lpd, 0.00001) == 0.0
+    assert isinstance(lpd, jax.Array)
+
+    # Check the fn. works for nested structures with incomplete priors
+    param_vals = {
+        "a": jnp.array([1.0]),
+        "b": {"a": jnp.array([10.0]), "b": jnp.array([3.0])},
+    }
+    priors = {"a": None, "b": {"a": dx.Normal(0, 1.0), "b": dx.Gamma(2.0, 2.0)}}
+    params = Parameters(params=param_vals, priors=priors)
+    if jit_compile:
+        lpd = jax.jit(params.log_prior_density)()
+    else:
+        lpd = params.log_prior_density()
+    assert pytest.approx(lpd, 0.00001) == -54.434032
+    assert isinstance(lpd, jax.Array)
+
+    # Check the prior initialising works - by default, there are no priors
+    params = Parameters(param_vals)
+    if jit_compile:
+        lpd = jax.jit(params.log_prior_density)()
+    else:
+        lpd = params.log_prior_density()
+    assert pytest.approx(lpd, 0.00001) == 0.0
+    assert isinstance(lpd, jax.Array)
 
 
-# @pytest.mark.parametrize("lik", [Gaussian, Bernoulli])
-# def test_prior_template(lik):
-#     posterior = Prior(kernel=RBF()) * lik(num_datapoints=10)
-#     params, _, _ = initialise(posterior, jr.PRNGKey(123)).unpack()
-#     prior_container = copy_dict_structure(params)
-#     for (
-#         k,
-#         v1,
-#         v2,
-#     ) in recursive_items(params, prior_container):
-#         assert v2 == None
+def test_constrain_unconstrain():
+    param_vals = {"a": jnp.array([1.0]), "b": jnp.array([2.0])}
+    bijections = {"a": Softplus, "b": Softplus}
+    params = Parameters(params=param_vals, bijectors=bijections)
+
+    unconstrain_fn = params.unconstrain
+
+    unconstrained_params = unconstrain_fn()
+
+    assert isinstance(unconstrained_params, Parameters)
+    assert isinstance(unconstrained_params.params, dict)
+
+    constrain_fn = unconstrained_params.constrain
+    constrained_params = constrain_fn()
+    assert isinstance(unconstrained_params, Parameters)
+    assert isinstance(unconstrained_params.params, dict)
+
+    assert constrained_params == params
 
 
-# @pytest.mark.parametrize("lik", [Gaussian, Bernoulli])
-# def test_recursive_complete(lik):
-#     posterior = Prior(kernel=RBF()) * lik(num_datapoints=10)
-#     params, _, _ = initialise(posterior, jr.PRNGKey(123)).unpack()
-#     priors = {"kernel": {}}
-#     priors["kernel"]["lengthscale"] = dx.Laplace(loc=0.0, scale=1.0)
-#     container = copy_dict_structure(params)
-#     complete_priors = recursive_complete(container, priors)
-#     for (
-#         k,
-#         v1,
-#         v2,
-#     ) in recursive_items(params, complete_priors):
-#         if k == "lengthscale":
-#             assert isinstance(v2, dx.Laplace)
-#         else:
-#             assert v2 == None
+def test_update_param():
+    param_vals = {"a": jnp.array([1.0]), "b": jnp.array([2.0])}
+    bijections = {"a": Softplus, "b": Softplus}
+    params = Parameters(params=param_vals, bijectors=bijections)
+
+    updated_param_vals = {"a": jnp.array([2.0]), "b": jnp.array([3.0])}
+    updated_params = params.update_params(updated_param_vals)
+
+    # Check the updated params are correct
+    assert updated_params.params == updated_param_vals
+    # Check that nothing else has changed
+    assert updated_params.bijectors == params.bijectors
+    assert updated_params.priors == params.priors
+    assert updated_params.trainables == params.trainables
+
+    # Check that a key structure raises an error
+    with pytest.raises(ValueError):
+        updated_params = params.update_params({"a": jnp.array([2.0])})
 
 
-# def test_prior_evaluation():
-#     """
-#     Test the regular setup that every parameter has a corresponding prior distribution attached to its unconstrained
-#     value.
-#     """
-#     params = {
-#         "kernel": {
-#             "lengthscale": jnp.array([1.0]),
-#             "variance": jnp.array([1.0]),
-#         },
-#         "likelihood": {"obs_noise": jnp.array([1.0])},
-#     }
-#     priors = {
-#         "kernel": {
-#             "lengthscale": dx.Gamma(1.0, 1.0),
-#             "variance": dx.Gamma(2.0, 2.0),
-#         },
-#         "likelihood": {"obs_noise": dx.Gamma(3.0, 3.0)},
-#     }
-#     lpd = evaluate_priors(params, priors)
-#     assert pytest.approx(lpd) == -2.0110168
+def test_bijector_update():
+    param_vals = {"a": jnp.array([1.0]), "b": jnp.array([2.0])}
+    bijections = {"a": Softplus, "b": Softplus}
+    params = Parameters(params=param_vals, bijectors=bijections)
+
+    updated_bijections = {"a": Softplus, "b": Identity}
+    updated_params = params.update_bijectors(updated_bijections)
+
+    # Check that bijections have been updated
+    assert updated_params.bijectors == updated_bijections
+    # Check all else is equal
+    assert updated_params == params
+    assert updated_params.trainables == params.trainables
+    assert updated_params.priors == params.priors
+
+    # Check that a key structure raises an error
+    with pytest.raises(ValueError):
+        updated_params = params.update_params({"a": Identity})
 
 
-# def test_none_prior():
-#     """
-#     Test that multiple dispatch is working in the case of no priors.
-#     """
-#     params = {
-#         "kernel": {
-#             "lengthscale": jnp.array([1.0]),
-#             "variance": jnp.array([1.0]),
-#         },
-#         "likelihood": {"obs_noise": jnp.array([1.0])},
-#     }
-#     priors = copy_dict_structure(params)
-#     lpd = evaluate_priors(params, priors)
-#     assert lpd == 0.0
+def test_trainables_update():
+    param_vals = {"a": jnp.array([1.0]), "b": jnp.array([2.0])}
+    trainables = {"a": True, "b": True}
+    params = Parameters(params=param_vals, trainables=trainables)
+
+    updated_trainables = {"a": True, "b": False}
+    updated_params = params.update_trainables(updated_trainables)
+
+    # Check that bijections have been updated
+    assert updated_params.trainables == updated_trainables
+    # Check all else is equal
+    assert updated_params == params
+    assert updated_params.bijectors == params.bijectors
+    assert updated_params.priors == params.priors
+
+    # Check that a key structure raises an error
+    with pytest.raises(ValueError):
+        updated_params = params.update_trainables({"a": True})
 
 
-# def test_incomplete_priors():
-#     """
-#     Test the case where a user specifies priors for some, but not all, parameters.
-#     """
-#     params = {
-#         "kernel": {
-#             "lengthscale": jnp.array([1.0]),
-#             "variance": jnp.array([1.0]),
-#         },
-#         "likelihood": {"obs_noise": jnp.array([1.0])},
-#     }
-#     priors = {
-#         "kernel": {
-#             "lengthscale": dx.Gamma(1.0, 1.0),
-#             "variance": dx.Gamma(2.0, 2.0),
-#         },
-#     }
-#     container = copy_dict_structure(params)
-#     complete_priors = recursive_complete(container, priors)
-#     lpd = evaluate_priors(params, complete_priors)
-#     assert pytest.approx(lpd) == -1.6137061
+def test_priors_update():
+    param_vals = {"a": jnp.array([1.0]), "b": jnp.array([2.0])}
+    priors = {"a": dx.Normal(0.0, 1.0), "b": dx.Normal(0.0, 1.0)}
+    params = Parameters(params=param_vals, priors=priors)
+
+    updated_priors = {"a": dx.Normal(0.0, 1.0), "b": dx.Gamma(3.0, 3.0)}
+    updated_params = params.update_priors(updated_priors)
+
+    # Check that bijections have been updated
+    assert updated_params.priors == updated_priors
+    # Check all else is equal
+    assert updated_params == params
+    assert updated_params.trainables == params.trainables
+    assert updated_params.bijectors == params.bijectors
+
+    # Check that a key structure raises an error
+    with pytest.raises(ValueError):
+        updated_params = params.update_priors({"a": dx.Gamma(3.0, 3.0)})
 
 
-# @pytest.mark.parametrize("num_datapoints", [1, 10])
-# def test_checks(num_datapoints):
-#     incomplete_priors = {"lengthscale": jnp.array([1.0])}
-#     posterior = Prior(kernel=RBF()) * Bernoulli(num_datapoints=num_datapoints)
-#     priors = prior_checks(incomplete_priors)
-#     assert "latent" in priors.keys()
-#     assert "variance" not in priors.keys()
-#     assert isinstance(priors["latent"], dx.Normal)
+def param_equality(params, truth, set_priors, set_trainables, set_bijectors):
+    assert params["params"] == truth["params"]
+
+    if set_trainables:
+        assert params["trainables"] == truth["trainables"]
+    else:
+        assert params["trainables"] == {k: True for k in truth["params"]}
+
+    if set_bijectors:
+        assert params["bijectors"] == truth["bijectors"]
+    else:
+        assert params["bijectors"] == {k: Identity for k in truth["params"]}
+
+    if set_priors:
+        assert params["priors"] == truth["priors"]
+    else:
+        assert params["priors"] == {k: None for k in truth["params"]}
 
 
-# def test_structure_priors():
-#     posterior = Prior(kernel=RBF()) * Gaussian(num_datapoints=10)
-#     params, _, _ = initialise(posterior, jr.PRNGKey(123)).unpack()
-#     priors = {
-#         "kernel": {
-#             "lengthscale": dx.Gamma(1.0, 1.0),
-#             "variance": dx.Gamma(2.0, 2.0),
-#         },
-#     }
-#     structured_priors = structure_priors(params, priors)
+@pytest.mark.parametrize("set_priors", [True, False])
+@pytest.mark.parametrize("set_trainables", [True, False])
+@pytest.mark.parametrize("set_bijectors", [True, False])
+def test_unpack(set_priors, set_trainables, set_bijectors):
+    init_param_vals = {"a": jnp.array([1.0]), "b": jnp.array([2.0])}
+    params, truth = build_params(
+        init_param_vals,
+        set_priors,
+        set_trainables,
+        set_bijectors,
+    )
+    contents = params.unpack()
 
-#     def recursive_fn(d1, d2, fn: tp.Callable[[tp.Any], tp.Any]):
-#         for key, value in d1.items():
-#             if type(value) is dict:
-#                 yield from recursive_fn(value, d2[key], fn)
-#             else:
-#                 yield fn(key, key)
-
-#     for v in recursive_fn(params, structured_priors, lambda k1, k2: k1 == k2):
-#         assert v
+    param_equality(contents, truth, set_priors, set_trainables, set_bijectors)
+    assert isinstance(contents["params"], dict)
+    assert isinstance(contents["trainables"], dict)
+    assert isinstance(contents["bijectors"], dict)
+    assert isinstance(contents["priors"], dict)
 
 
-# @pytest.mark.parametrize("latent_prior", [dx.Laplace(0.0, 1.0), dx.Laplace(0.0, 1.0)])
-# def test_prior_checks(latent_prior):
-#     priors = {
-#         "kernel": {"lengthscale": None, "variance": None},
-#         "mean_function": {},
-#         "liklelihood": {"variance": None},
-#         "latent": None,
-#     }
-#     new_priors = prior_checks(priors)
-#     assert "latent" in new_priors.keys()
-#     assert isinstance(new_priors["latent"], dx.Normal)
+@pytest.mark.parametrize("set_priors", [True, False])
+@pytest.mark.parametrize("set_trainables", [True, False])
+@pytest.mark.parametrize("set_bijectors", [True, False])
+def test_combine(set_priors, set_trainables, set_bijectors):
+    p1, truth1 = build_params(
+        {"a": jnp.array([1.0])}, set_priors, set_trainables, set_bijectors
+    )
+    p2, truth2 = build_params(
+        {"b": jnp.array([2.0])}, set_priors, set_trainables, set_bijectors
+    )
 
-#     priors = {
-#         "kernel": {"lengthscale": None, "variance": None},
-#         "mean_function": {},
-#         "liklelihood": {"variance": None},
-#     }
-#     new_priors = prior_checks(priors)
-#     assert "latent" in new_priors.keys()
-#     assert isinstance(new_priors["latent"], dx.Normal)
+    p = p1.combine(p2, left_key="x", right_key="y")
+    assert isinstance(p, Parameters)
+    assert p.params == {"x": truth1["params"], "y": truth2["params"]}
+    assert list(p.keys()) == ["x", "y"]
 
-#     priors = {
-#         "kernel": {"lengthscale": None, "variance": None},
-#         "mean_function": {},
-#         "liklelihood": {"variance": None},
-#         "latent": latent_prior,
-#     }
-#     with pytest.warns(UserWarning):
-#         new_priors = prior_checks(priors)
-#     assert "latent" in new_priors.keys()
-#     assert isinstance(new_priors["latent"], dx.Laplace)
+    if set_trainables:
+        assert p.trainables == {
+            "x": truth1["trainables"],
+            "y": truth2["trainables"],
+        }
+    else:
+        assert p.trainables == {"x": {"a": True}, "y": {"b": True}}
+
+    if set_bijectors:
+        assert p.bijectors == {
+            "x": truth1["bijectors"],
+            "y": truth2["bijectors"],
+        }
+    else:
+        assert p.bijectors == {"x": {"a": Identity}, "y": {"b": Identity}}
+
+    if set_priors:
+        assert p.priors == {"x": truth1["priors"], "y": truth2["priors"]}
+    else:
+        assert p.priors == {"x": {"a": None}, "y": {"b": None}}
 
 
-# #########################
-# # Test transforms
-# #########################
-# @pytest.mark.parametrize("num_datapoints", [1, 10])
-# @pytest.mark.parametrize("likelihood", [Gaussian, Bernoulli])
-# def test_output(num_datapoints, likelihood):
-#     posterior = Prior(kernel=RBF()) * likelihood(num_datapoints=num_datapoints)
-#     params, _, bijectors = initialise(posterior, jr.PRNGKey(123)).unpack()
+@pytest.mark.parametrize("prior", [dx.Normal(0, 1), dx.Gamma(2.0, 2.0), None])
+@pytest.mark.parametrize("trainable", [True, False])
+@pytest.mark.parametrize("bijector", [Softplus, Identity])
+def test_add_parameter(prior, trainable, bijector):
+    p = Parameters({"a": jnp.array([1.0])})
+    p.add_parameter(
+        key="b",
+        value=jnp.array([2.0]),
+        prior=prior,
+        trainability=trainable,
+        bijector=bijector,
+    )
 
-#     assert isinstance(bijectors, dict)
-#     for k, v1, v2 in recursive_items(bijectors, bijectors):
-#         assert isinstance(v1.forward, tp.Callable)
-#         assert isinstance(v2.inverse, tp.Callable)
+    assert "b" in p.keys()
+    assert p["b"] == jnp.array([2.0])
+    assert p.trainables["b"] == trainable
+    assert p.bijectors["b"] == bijector
+    assert p.priors["b"] == prior
 
-#     unconstrained_params = unconstrain(params, bijectors)
-#     assert (
-#         unconstrained_params["kernel"]["lengthscale"] != params["kernel"]["lengthscale"]
-#     )
-#     backconstrained_params = constrain(unconstrained_params, bijectors)
-#     for k, v1, v2 in recursive_items(params, unconstrained_params):
-#         assert v1.dtype == v2.dtype
+    # Test adding a parameter with a parameter object
+    p = Parameters({"a": jnp.array([1.0])})
+    p2 = Parameters(
+        params={"c": jnp.array([2.0])},
+        bijectors={"c": bijector},
+        priors={"c": prior},
+        trainables={"c": trainable},
+    )
+    p.add_parameter(
+        key="b",
+        parameter=p2,
+    )
 
-#     for k, v1, v2 in recursive_items(params, backconstrained_params):
-#         assert all(v1 == v2)
+    assert "b" in p.keys()
+    assert p["b"] == p2.params
+    assert p.trainables["b"] == p2.trainables
+    assert p.bijectors["b"] == p2.bijectors
+    assert p.priors["b"] == p2.priors
 
-#     augmented_params = params
-#     augmented_params["test_param"] = jnp.array([1.0])
-#     a_bijectors = build_bijectors(augmented_params)
-
-#     assert "test_param" in list(a_bijectors.keys())
-#     assert a_bijectors["test_param"].forward(jnp.array([1.0])) == 1.0
-#     assert a_bijectors["test_param"].inverse(jnp.array([1.0])) == 1.0
+    # Check that trying to overwrite a parameter raises an error
+    with pytest.raises(ValueError):
+        p.add_parameter(key="b", parameter=p2)

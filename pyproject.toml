@@ -1,0 +1,4 @@
+[tool.ruff]
+line-length = 88
+update-check = false
+ignore = ["F722"]

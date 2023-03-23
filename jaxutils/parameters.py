@@ -1,4 +1,4 @@
-# Copyright 2022 The GPJax Contributors. All Rights Reserved.
+# Copyright 2023 The JaxGaussianProcesses Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,408 +13,322 @@
 # limitations under the License.
 # ==============================================================================
 
-import warnings
-from copy import deepcopy
-from typing import Dict, Tuple
-from warnings import warn
+from __future__ import annotations
 
-import distrax as dx
+import jax.tree_util as jtu
 import jax
 import jax.numpy as jnp
-import jax.random as jr
-from jax.random import KeyArray
-from jaxtyping import Array, Float
-from jaxutils import PyTree
+from typing import Any, Callable, Dict
+from .bijectors import Identity
+from simple_pytree import Pytree, static_field
+from jax.tree_util import tree_flatten, tree_structure
+from jaxtyping import Float, Array
+from distrax import Bijector, Distribution
+from collections.abc import KeysView, ValuesView, ItemsView
 
-from .config import Identity, get_global_config
-from .dict import merge_dictionaries
 
-
-################################
-# Base operations
-################################
-class ParameterState(PyTree):
+class Parameters(Pytree, dict):
     """
     The state of the model. This includes the parameter set, which parameters
     are to be trained and bijectors that allow parameters to be constrained and
     unconstrained.
     """
 
-    def __init__(self, params: Dict, trainables: Dict, bijectors: Dict) -> None:
-        self.params = params
-        self.trainables = trainables
-        self.bijectors = bijectors
+    _param_dict: Dict
+    _bijector_dict: Dict = static_field()
+    _trainable_dict: Dict = static_field()
+    _training_history: list = static_field()
 
-    def unpack(self):
+    def __init__(
+        self,
+        # TODO: Should block inplace updates e.g., `params.params['a']=jnp.array([2.])`
+        params: Dict,
+        bijectors: Dict = None,
+        trainables: Dict = None,
+        priors: Dict = None,
+        training_history=None,
+    ):
+
+        if bijectors is None:
+            bijectors = jtu.tree_map(lambda _: Identity, params)
+
+        if trainables is None:
+            trainables = jtu.tree_map(lambda _: True, params)
+
+        if priors is None:
+            priors = jtu.tree_map(lambda _: None, params)
+
+        self._param_dict = params
+        self._trainable_dict = trainables
+        self._bijector_dict = bijectors
+        self._prior_dict = priors
+        self._training_history = training_history
+
+    def __repr__(self) -> str:
+        return f"Parameters({self.params.__repr__()})"
+
+    def __getitem__(self, __name: str) -> Any:
+        return self._param_dict.__getitem__(__name)
+
+    def __setitem__(self, __name: str, __value: Any) -> None:
+        return self._param_dict.__setitem__(__name, __value)
+
+    def __eq__(self, other: Parameters) -> bool:
+        return self.params == other.params
+
+    @property
+    def params(self) -> Dict:
+        return self._param_dict
+
+    def update_params(self, value: Dict) -> Parameters:
+        self._validate_update(value, self.params, "params")
+        return Parameters(
+            value,
+            self.bijectors,
+            self.trainables,
+            self.priors,
+            self.training_history,
+        )
+
+    @staticmethod
+    def _validate_update(
+        value: dict,
+        comparison: dict,
+        name: str,
+        lambda_expression: Callable[[Any], bool] = None,
+    ):
+        if tree_structure(comparison, lambda_expression) != tree_structure(
+            value, lambda_expression
+        ):
+            raise ValueError(
+                f"The structure of the {name} has changed. Please ensure"
+                f" updates to {name} do not alter the strcuture."
+            )
+
+    @property
+    def bijectors(self) -> Dict:
+        return self._bijector_dict
+
+    def update_bijectors(self, value: Dict) -> Parameters:
+        self._validate_update(
+            value,
+            self.bijectors,
+            "bijectors",
+            lambda x: isinstance(x, Bijector),
+        )
+        return Parameters(
+            self.params,
+            value,
+            self.trainables,
+            self.priors,
+            self.training_history,
+        )
+
+    @property
+    def trainables(self) -> Dict:
+        return self._trainable_dict
+
+    def update_trainables(self, value: Dict) -> Parameters:
+        self._validate_update(value, self.trainables, "trainables")
+        return Parameters(
+            self.params,
+            self.bijectors,
+            value,
+            self.priors,
+            self.training_history,
+        )
+
+    @property
+    def priors(self) -> Dict:
+        return self._prior_dict
+
+    def update_priors(self, value: Dict) -> Parameters:
+        self._validate_update(
+            value,
+            self.priors,
+            "priors",
+            lambda x: isinstance(x, Distribution),
+        )
+        return Parameters(
+            self.params,
+            self.bijectors,
+            self.trainables,
+            value,
+            self.training_history,
+        )
+
+    @property
+    def training_history(self) -> list:
+        return self._training_history
+
+    def update_training_history(self, value: list) -> Parameters:
+        return Parameters(
+            self.params,
+            self.bijectors,
+            self.trainables,
+            self.priors,
+            value,
+        )
+
+    def unpack(
+        self,
+    ) -> Dict[str, Dict[str, Any]]:
         """Unpack the state into a tuple of parameters, trainables and bijectors.
 
         Returns:
-            Tuple[Dict, Dict, Dict]: The parameters, trainables and bijectors.
+            Dict[str, Dict[str, Any]]: The parameters, trainables and bijectors.
         """
-        return self.params, self.trainables, self.bijectors
+        contents = {
+            "params": self.params,
+            "trainables": self.trainables,
+            "bijectors": self.bijectors,
+            "priors": self.priors,
+        }
+        return contents
 
+    def constrain(self) -> Parameters:
+        """Use the bijectors to transform the parameters to a constrained space.
 
-def initialise(model, key: KeyArray = None, **kwargs) -> ParameterState:
-    """
-    Initialise the stateful parameters of any GPJax object. This function also
-    returns the trainability status of each parameter and set of bijectors that
-    allow parameters to be constrained and unconstrained.
-
-    Args:
-        model: The GPJax object that is to be initialised.
-        key (KeyArray, optional): The random key that is to be used for
-            initialisation. Defaults to None.
-
-    Returns:
-        ParameterState: The state of the model. This includes the parameter
-            set, which parameters are to be trained and bijectors that allow
-            parameters to be constrained and unconstrained.
-    """
-
-    if key is None:
-        warn("No PRNGKey specified. Defaulting to seed 123.", UserWarning, stacklevel=2)
-        key = jr.PRNGKey(123)
-
-    # Initialise the parameters.
-    if hasattr(model, "init_params"):
-        params = model.init_params(key)
-
-    elif hasattr(model, "_initialise_params"):
-        warn(
-            "`_initialise_params` is deprecated. Please use `init_params` instead.",
-            DeprecationWarning,
-            stacklevel=2,
+        Returns:
+            Parameters: A new Parameters object with the constrained parameter values.
+        """
+        return self.update_params(
+            jtu.tree_map(
+                lambda param, trans: trans.forward(param),
+                self.params,
+                self.bijectors,
+            )
         )
-        params = model._initialise_params(key)
 
-    else:
-        raise AttributeError("No `init_params` or `_initialise_params` method found.")
+    def unconstrain(self) -> Parameters:
+        """Use the bijectors to transform the parameters to an unconstrained space.
 
-    if kwargs:
-        _validate_kwargs(kwargs, params)
-        for k, v in kwargs.items():
-            params[k] = merge_dictionaries(params[k], v)
+        Returns:
+            Parameters: A new Parameters object with the unconstrained parameter
+                values.
+        """
+        return self.update_params(
+            jtu.tree_map(
+                lambda param, trans: trans.inverse(param),
+                self.params,
+                self.bijectors,
+            )
+        )
 
-    bijectors = build_bijectors(params)
-    trainables = build_trainables(params)
+    def add_parameter(
+        self,
+        key: str,
+        *,
+        parameter: Parameters = None,
+        value: jax.Array = None,
+        prior: Distribution = None,
+        bijector: Bijector = Identity,
+        trainability: bool = True,
+    ) -> None:
+        """Add a parameter to the Parameters object.
 
-    return ParameterState(
-        params=params,
-        trainables=trainables,
-        bijectors=bijectors,
-    )
-
-
-def _validate_kwargs(kwargs, params):
-    for k, v in kwargs.items():
-        if k not in params.keys():
-            raise ValueError(f"Parameter {k} is not a valid parameter.")
-
-
-def recursive_items(d1: Dict, d2: Dict):
-    """
-    Recursive loop over pair of dictionaries whereby the value of a given key in
-    either dictionary can be itself a dictionary.
-
-    Args:
-        d1 (_type_): _description_
-        d2 (_type_): _description_
-
-    Yields:
-        _type_: _description_
-    """
-    for key, value in d1.items():
-        if type(value) is dict:
-            yield from recursive_items(value, d2[key])
+        Args:
+            key (str): The name of the parameter.
+            value (jax.Array): The value of the parameter.
+            prior (Distribution): The prior distribution of the parameter.
+            bijector (Bijector): The bijector to transform the parameter.
+            trainability (bool): The trainability of the parameter.
+        """
+        if key in self.keys():
+            raise ValueError(f"Parameter with key: {key} already exists.")
         else:
-            yield (key, value, d2[key])
+            if parameter is None:
+                self.params[key] = value
+                self.priors[key] = prior
+                self.bijectors[key] = bijector
+                self.trainables[key] = trainability
+            else:
+                contents = parameter.unpack()
+                self.params[key] = contents["params"]
+                self.priors[key] = contents["priors"]
+                self.bijectors[key] = contents["bijectors"]
+                self.trainables[key] = contents["trainables"]
+
+    def stop_gradients(self) -> Parameters:
+        def _stop_grad(param: Dict, trainable: Dict) -> Dict:
+            return jax.lax.cond(trainable, lambda x: x, jax.lax.stop_gradient, param)
+
+        return self.update_params(
+            jtu.tree_map(
+                lambda param, trainable: _stop_grad(param, trainable),
+                self.params,
+                self.trainables,
+            )
+        )
+
+    def items(self) -> ItemsView:
+        """Return the items of the parameters."""
+        return self.params.items()
+
+    def keys(self) -> KeysView:
+        """Return the keys of the parameters."""
+        return self.params.keys()
+
+    def values(self) -> ValuesView:
+        """Return the values of the parameters."""
+        return self.params.values()
+
+    def log_prior_density(self) -> Array[Float, "1"]:
+        """
+        Recursive loop over pair of dictionaries that correspond to a parameter's
+        current value and the parameter's respective prior distribution. For
+        parameters where a prior distribution is specified, the log-prior density is
+        evaluated at the parameter's current value.
+
+        Args: params (Dict): Dictionary containing the current set of parameter
+            estimates. priors (Dict): Dictionary specifying the parameters' prior
+            distributions.
+
+        Returns:
+            Dict: The log-prior density, summed over all parameters.
+        """
+
+        def log_density(param, prior):
+            # TODO: Use a jax.lax.cond be used here?
+            if prior is not None:
+                return jnp.sum(prior.log_prob(param))
+            else:
+                return jnp.array(0.0)
+
+        log_prior_density_dict = jtu.tree_map(log_density, self.params, self.priors)
+        leaves, _ = tree_flatten(log_prior_density_dict)
+        return sum(leaves)
+
+    def combine(self, other: Parameters, left_key: str, right_key: str) -> Parameters:
+        """Combine two sets of parameters into a single set of parameters.
+
+        Args:
+            other (Parameters): The other set of parameters.
+            left_key (str): The key to use for the left (i.e., `self`) set of
+                parameters.
+            right_key (str): The key to use for the right (i.e., `other`) set of
+                parameters
+
+        Returns:
+            Parameters: A nested set of parameters.
+        """
+
+        self_contents = self.unpack()
+        other_contents = other.unpack()
+
+        combined_contents = {}
+        for k in self_contents.keys():
+            combined_contents[k] = {
+                left_key: self_contents[k],
+                right_key: other_contents[k],
+            }
+
+        return Parameters(
+            params=combined_contents["params"],
+            bijectors=combined_contents["bijectors"],
+            trainables=combined_contents["trainables"],
+            priors=combined_contents["priors"],
+        )
 
 
-def recursive_complete(d1: Dict, d2: Dict) -> Dict:
-    """
-    Recursive loop over pair of dictionaries whereby the value of a given key in
-    either dictionary can be itself a dictionary. If the value of the key in the
-    second dictionary is None, the value of the key in the first dictionary is
-    used.
-
-    Args:
-        d1 (Dict): The reference dictionary.
-        d2 (Dict): The potentially incomplete dictionary.
-
-    Returns:
-        Dict: A completed form of the second dictionary.
-    """
-    for key, value in d1.items():
-        if type(value) is dict:
-            if key in d2.keys():
-                recursive_complete(value, d2[key])
-        else:
-            if key in d2.keys():
-                d1[key] = d2[key]
-    return d1
-
-
-################################
-# Parameter transformation
-################################
-def build_bijectors(params: Dict) -> Dict:
-    """
-    For each parameter, build the bijection pair that allows the parameter to be
-    constrained and unconstrained.
-
-    Args:
-        params (Dict): _description_
-
-    Returns:
-        Dict: A dictionary that maps each parameter to a bijection.
-    """
-    bijectors = copy_dict_structure(params)
-    config = get_global_config()
-    transform_set = config["transformations"]
-
-    def recursive_bijectors_list(ps, bs):
-        return [recursive_bijectors(ps[i], bs[i]) for i in range(len(bs))]
-
-    def recursive_bijectors(ps, bs) -> Tuple[Dict, Dict]:
-        if type(ps) is list:
-            bs = recursive_bijectors_list(ps, bs)
-
-        else:
-            for key, value in ps.items():
-                if type(value) is dict:
-                    recursive_bijectors(value, bs[key])
-                elif type(value) is list:
-                    bs[key] = recursive_bijectors_list(value, bs[key])
-                else:
-                    if key in transform_set.keys():
-                        transform_type = transform_set[key]
-                        bijector = transform_set[transform_type]
-                    else:
-                        bijector = Identity
-                        warnings.warn(
-                            f"Parameter {key} has no transform. Defaulting to identity transfom."
-                        )
-                    bs[key] = bijector
-        return bs
-
-    return recursive_bijectors(params, bijectors)
-
-
-def constrain(params: Dict, bijectors: Dict) -> Dict:
-    """
-    Transform the parameters to the constrained space for corresponding
-    bijectors.
-
-    Args:
-        params (Dict): The parameters that are to be transformed.
-        bijectors (Dict): The bijectors that are to be used for
-            transformation.
-
-    Returns:
-        Dict: A transformed parameter set. The dictionary is equal in
-            structure to the input params dictionary.
-    """
-    map = lambda param, trans: trans.forward(param)
-
-    return jax.tree_util.tree_map(map, params, bijectors)
-
-
-def unconstrain(params: Dict, bijectors: Dict) -> Dict:
-    """Transform the parameters to the unconstrained space for corresponding
-        bijectors.
-
-    Args:
-        params (Dict): The parameters that are to be transformed.
-        bijectors (Dict): The corresponding dictionary of transforms that
-            should be applied to the parameter set.
-
-    Returns:
-        Dict: A transformed parameter set. The dictionary is equal in
-            structure to the input params dictionary.
-    """
-
-    map = lambda param, trans: trans.inverse(param)
-
-    return jax.tree_util.tree_map(map, params, bijectors)
-
-
-################################
-# Priors
-################################
-def log_density(
-    param: Float[Array, "D"], density: dx.Distribution
-) -> Float[Array, "1"]:
-    """Compute the log density of a parameter given a distribution.
-
-    Args:
-        param (Float[Array, "D"]): The parameter that is to be evaluated.
-        density (dx.Distribution): The distribution that is to be evaluated.
-
-    Returns:
-        Float[Array, "1"]: The log density of the parameter.
-    """
-    if type(density) == type(None):
-        log_prob = jnp.array(0.0)
-    else:
-        log_prob = jnp.sum(density.log_prob(param))
-    return log_prob
-
-
-def copy_dict_structure(params: Dict) -> Dict:
-    """Copy the structure of a dictionary.
-
-    Args:
-        params (Dict): The dictionary that is to be copied.
-
-    Returns:
-        Dict: A copy of the input dictionary.
-    """
-    # Copy dictionary structure
-    prior_container = deepcopy(params)
-    # Set all values to zero
-    prior_container = jax.tree_util.tree_map(lambda _: None, prior_container)
-    return prior_container
-
-
-def structure_priors(params: Dict, priors: Dict) -> Dict:
-    """First create a dictionary with equal structure to the parameters.
-    Then, for each supplied prior, overwrite the None value if it exists.
-
-    Args:
-        params (Dict): [description]
-        priors (Dict): [description]
-
-    Returns:
-        Dict: [description]
-    """
-    prior_container = copy_dict_structure(params)
-    # Where a prior has been supplied, override the None value by the prior distribution.
-    complete_prior = recursive_complete(prior_container, priors)
-    return complete_prior
-
-
-def evaluate_priors(params: Dict, priors: Dict) -> Dict:
-    """
-    Recursive loop over pair of dictionaries that correspond to a parameter's
-    current value and the parameter's respective prior distribution. For
-    parameters where a prior distribution is specified, the log-prior density is
-    evaluated at the parameter's current value.
-
-    Args: params (Dict): Dictionary containing the current set of parameter
-        estimates. priors (Dict): Dictionary specifying the parameters' prior
-        distributions.
-
-    Returns:
-        Dict: The log-prior density, summed over all parameters.
-    """
-    lpd = jnp.array(0.0)
-    if priors is not None:
-        for name, param, prior in recursive_items(params, priors):
-            lpd += log_density(param, prior)
-    return lpd
-
-
-def prior_checks(priors: Dict) -> Dict:
-    """
-    Run checks on the parameters' prior distributions. This checks that for
-    Gaussian processes that are constructed with non-conjugate likelihoods, the
-    prior distribution on the function's latent values is a unit Gaussian.
-
-    Args:
-        priors (Dict): Dictionary specifying the parameters' prior distributions.
-
-    Returns:
-        Dict: Dictionary specifying the parameters' prior distributions.
-    """
-    if "latent" in priors.keys():
-        latent_prior = priors["latent"]
-        if latent_prior is not None:
-            if not isinstance(latent_prior, dx.Normal):
-                warnings.warn(
-                    f"A {type(latent_prior)} distribution prior has been placed on"
-                    " the latent function. It is strongly advised that a"
-                    " unit Gaussian prior is used."
-                )
-        else:
-            warnings.warn("Placing unit Gaussian prior on latent function.")
-            priors["latent"] = dx.Normal(loc=0.0, scale=1.0)
-    else:
-        priors["latent"] = dx.Normal(loc=0.0, scale=1.0)
-
-    return priors
-
-
-def build_trainables(params: Dict, status: bool = True) -> Dict:
-    """
-    Construct a dictionary of trainable statuses for each parameter. By default,
-    every parameter within the model is trainable.
-
-    Args:
-        params (Dict): The parameter set for which trainable statuses should be
-            derived from.
-        status (bool): The status of each parameter. Default is True.
-
-    Returns:
-        Dict: A dictionary of boolean trainability statuses. The dictionary is
-            equal in structure to the input params dictionary.
-    """
-    # Copy dictionary structure
-    prior_container = deepcopy(params)
-    # Set all values to zero
-    prior_container = jax.tree_util.tree_map(lambda _: status, prior_container)
-    return prior_container
-
-
-def _stop_grad(param: Dict, trainable: Dict) -> Dict:
-    """
-    When taking a gradient, we want to stop the gradient from flowing through a
-    parameter if it is not trainable. This is achieved using the model's
-    dictionary of parameters and the corresponding trainability status.
-
-    Args:
-        param (Dict): The parameter set for which trainable statuses should be
-            derived from.
-        trainable (Dict): A boolean value denoting the training status the `param`.
-
-    Returns:
-        Dict: The gradient is stopped for non-trainable parameters.
-    """
-    return jax.lax.cond(trainable, lambda x: x, jax.lax.stop_gradient, param)
-
-
-def trainable_params(params: Dict, trainables: Dict) -> Dict:
-    """
-    Stop the gradients flowing through parameters whose trainable status is
-    False.
-
-    Args:
-        params (Dict): The parameter set for which trainable statuses should
-            be derived from.
-        trainables (Dict): A dictionary of boolean trainability statuses. The
-            dictionary is equal in structure to the input params dictionary.
-
-    Returns:
-        Dict: A dictionary parameters. The dictionary is equal in structure to
-            the input params dictionary.
-    """
-    return jax.tree_util.tree_map(
-        lambda param, trainable: _stop_grad(param, trainable), params, trainables
-    )
-
-
-__all__ = [
-    "ParameterState",
-    "initialise",
-    "recursive_items",
-    "recursive_complete",
-    "build_bijectors",
-    "constrain",
-    "unconstrain",
-    "log_density",
-    "copy_dict_structure",
-    "structure_priors",
-    "evaluate_priors",
-    "prior_checks",
-    "build_trainables",
-    "trainable_params",
-]
+__all__ = ["Parameters"]

@@ -38,12 +38,14 @@ if "BUILD_JAXUTILS_NIGHTLY" in os.environ:
     versioneer.get_versions = get_versions
 
 
-REQUIRES = ["jax>=0.4.0", 
-            "jaxlib>=0.4.0", 
-            "jaxtyping", 
-            "ml-collections==0.1.0",
-            "distrax>=0.1.2",
-            ]
+REQUIRES = [
+    "jax>=0.4.0",
+    "jaxlib>=0.4.0",
+    "jaxtyping",
+    "optax",
+    "tqdm",
+    "distrax",
+]
 
 EXTRAS = {
     "dev": [
