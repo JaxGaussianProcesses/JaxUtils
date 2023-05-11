@@ -1,3 +1,6 @@
+----
+This project has now been incorporated into [GPJax](https://github.com/JaxGaussianProcesses/GPJax).
+----
 # [JaxUtils](https://github.com/JaxGaussianProcesses/JaxUtils)
 
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/JaxGaussianProcesses/JaxUtils/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/JaxGaussianProcesses/JaxUtils/tree/master)
